@@ -130,11 +130,19 @@ export function CardEditor({
                   }}
                 >
                   <option value="__default">Set default back</option>
-                  {sharedBacks.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      Shared: {b.title ?? b.id.slice(0, 6)}
-                    </option>
-                  ))}
+                  {sharedBacks.map((b) => {
+                    const base = b.basedOnFaceId
+                      ? sharedBacks.find((s) => s.id === b.basedOnFaceId)
+                      : null;
+                    const label = b.variantLabel
+                      ? `${base?.title ?? b.title ?? "Back"} – ${b.variantLabel}`
+                      : b.title ?? b.id.slice(0, 6);
+                    return (
+                      <option key={b.id} value={b.id}>
+                        Shared: {label}
+                      </option>
+                    );
+                  })}
                   <option value="__custom">
                     {backIsCustom ? "Custom back (this card only)" : "Customize for this card…"}
                   </option>

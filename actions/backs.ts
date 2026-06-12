@@ -28,11 +28,36 @@ export async function setDefaultBack(setId: string, faceId: string | null) {
 }
 
 export async function deleteSharedBack(setId: string, faceId: string) {
+  // Deleting a base back takes its variants with it — otherwise SetNull would
+  // promote them to confusingly-named top-level backs.
+  const variants = await prisma.cardFace.findMany({
+    where: { basedOnFaceId: faceId },
+    select: { id: true },
+  });
+  const ids = [faceId, ...variants.map((v) => v.id)];
   await prisma.$transaction([
-    prisma.card.updateMany({ where: { backFaceId: faceId }, data: { backFaceId: null } }),
-    prisma.cardSet.updateMany({ where: { id: setId, defaultBackId: faceId }, data: { defaultBackId: null } }),
-    prisma.cardFace.delete({ where: { id: faceId } }),
+    prisma.card.updateMany({ where: { backFaceId: { in: ids } }, data: { backFaceId: null } }),
+    prisma.cardSet.updateMany({ where: { id: setId, defaultBackId: { in: ids } }, data: { defaultBackId: null } }),
+    prisma.cardFace.deleteMany({ where: { id: { in: ids } } }),
   ]);
+  revalidatePath(`/sets/${setId}`);
+}
+
+/** Create a label variant of a shared back ("pack" member: same design, different text). */
+export async function createBackVariant(setId: string, baseFaceId: string, label: string) {
+  const base = await prisma.cardFace.findUniqueOrThrow({ where: { id: baseFaceId } });
+  if (base.sharedBackSetId !== setId) throw new Error("Base back does not belong to this set");
+  await prisma.cardFace.create({
+    data: {
+      sharedBackSetId: setId,
+      basedOnFaceId: baseFaceId,
+      variantLabel: label,
+      title: label,
+      textLayout: base.textLayout,
+      imagePrompt: base.imagePrompt,
+      bodyText: base.bodyText,
+    },
+  });
   revalidatePath(`/sets/${setId}`);
 }
 

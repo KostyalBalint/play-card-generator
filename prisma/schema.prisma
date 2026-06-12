@@ -65,6 +65,10 @@ model CardFace {
   bodyText        String?
   imagePrompt     String?
   activeImageId   String?
+  variantLabel    String?
+  basedOnFace     CardFace?        @relation("FaceVariants", fields: [basedOnFaceId], references: [id], onDelete: SetNull)
+  basedOnFaceId   String?
+  variants        CardFace[]       @relation("FaceVariants")
   images          GeneratedImage[]
   frontOfCard     Card?            @relation("CardFront")
   backOfCards     Card[]           @relation("CardBack")
@@ -80,6 +84,7 @@ model GeneratedImage {
   faceId         String
   status         GenStatus @default(PENDING)
   resolvedPrompt String
+  sourceImageId  String?
   filePath       String?
   widthPx        Int?
   heightPx       Int?

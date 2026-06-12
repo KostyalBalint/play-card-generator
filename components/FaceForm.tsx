@@ -20,6 +20,8 @@ export function FaceForm({
   readOnlyNote,
   draft: controlledDraft,
   onDraftChange,
+  defaultReferenceImageId = null,
+  defaultAlterPrompt = "",
 }: {
   face: FaceWithImages;
   widthMm: number;
@@ -28,11 +30,15 @@ export function FaceForm({
   readOnlyNote?: string;
   draft?: FaceDraft;
   onDraftChange?: (draft: FaceDraft) => void;
+  /** Fallback reference for alter-mode when this face has no image yet (e.g. fresh back variant) */
+  defaultReferenceImageId?: string | null;
+  defaultAlterPrompt?: string;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [internalDraft, setInternalDraft] = useState<FaceDraft>(() => draftFromFace(face));
   const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [alterPrompt, setAlterPrompt] = useState(defaultAlterPrompt);
   const draft = controlledDraft ?? internalDraft;
   const setDraft = onDraftChange ?? setInternalDraft;
 
@@ -71,12 +77,20 @@ export function FaceForm({
     });
   }
 
-  async function generate() {
+  async function generate(referenceImageId?: string) {
     setGenError(null);
     setGenerating(true);
     try {
       await updateFace(face.id, draft);
-      const res = await fetch(`/api/faces/${face.id}/generate`, { method: "POST" });
+      const res = await fetch(`/api/faces/${face.id}/generate`, {
+        method: "POST",
+        ...(referenceImageId
+          ? {
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ referenceImageId, alterPrompt }),
+            }
+          : {}),
+      });
       const data = await res.json();
       if (data.status === "FAILED") setGenError(data.error ?? "Generation failed");
     } catch (err) {
@@ -86,6 +100,8 @@ export function FaceForm({
       router.refresh();
     }
   }
+
+  const refImageId = face.activeImageId ?? defaultReferenceImageId;
 
   const doneImages = face.images.filter((img) => img.status === "DONE");
 
@@ -207,11 +223,33 @@ export function FaceForm({
               Save
             </button>
             <button
-              onClick={generate}
+              onClick={() => generate()}
               disabled={generating || !draft.imagePrompt.trim()}
               className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
             >
               {generating ? "Generating…" : face.activeImageId ? "Regenerate image" : "Generate image"}
+            </button>
+          </div>
+        )}
+        {!readOnly && refImageId && (
+          <div className="space-y-2 rounded-lg border border-violet-200 bg-violet-50 p-3 dark:border-violet-900 dark:bg-violet-950">
+            <label className={labelCls}>
+              Alter image — describe the change; {face.activeImageId ? "the current image" : "the base design"}{" "}
+              is used as reference, style stays the same
+            </label>
+            <textarea
+              className={inputCls}
+              rows={2}
+              value={alterPrompt}
+              placeholder={'e.g. Change the label text to "B". Keep everything else identical.'}
+              onChange={(e) => setAlterPrompt(e.target.value)}
+            />
+            <button
+              onClick={() => generate(refImageId)}
+              disabled={generating || !alterPrompt.trim()}
+              className="rounded-md bg-violet-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-violet-500 disabled:opacity-50"
+            >
+              {generating ? "Generating…" : "Alter image"}
             </button>
           </div>
         )}
