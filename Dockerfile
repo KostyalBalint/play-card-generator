@@ -48,6 +48,10 @@ COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
 # Generated prisma client (incl. linux query-engine .node) used at runtime.
 COPY --from=builder /app/lib/generated/prisma ./lib/generated/prisma
+# sharp's native libvips lives in @img/* optional deps that Next's standalone
+# file tracing misses (ERR_DLOPEN_FAILED: libvips-cpp.so otherwise).
+COPY --from=builder /app/node_modules/sharp ./node_modules/sharp
+COPY --from=builder /app/node_modules/@img ./node_modules/@img
 
 # Prisma CLI (full dep tree) + schema so the entrypoint can run `migrate deploy` at startup.
 COPY --from=prisma-cli /prisma-cli/node_modules ./prisma-cli/node_modules
