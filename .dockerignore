@@ -1,0 +1,14 @@
+node_modules
+.next
+.git
+.env
+.env*
+storage
+lib/generated
+npm-debug.log*
+.DS_Store
+README.md
+tests
+scripts
+coverage
+.github

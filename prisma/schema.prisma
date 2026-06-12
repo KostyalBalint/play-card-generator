@@ -1,0 +1,87 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum SizePreset {
+  POKER
+  TAROT
+  CUSTOM
+}
+
+enum TextLayout {
+  NONE
+  TITLE_BANNER
+  TEXT_BOX
+}
+
+enum GenStatus {
+  PENDING
+  DONE
+  FAILED
+}
+
+model CardSet {
+  id            String     @id @default(cuid())
+  name          String
+  description   String?
+  stylePrompt   String
+  sizePreset    SizePreset @default(TAROT)
+  widthMm       Float      @default(70)
+  heightMm      Float      @default(120)
+  cards         Card[]
+  sharedBacks   CardFace[] @relation("SetSharedBacks")
+  defaultBackId String?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+}
+
+model Card {
+  id          String    @id @default(cuid())
+  set         CardSet   @relation(fields: [setId], references: [id], onDelete: Cascade)
+  setId       String
+  name        String
+  number      Int?
+  orderIndex  Int       @default(0)
+  copies      Int       @default(1)
+  front       CardFace  @relation("CardFront", fields: [frontFaceId], references: [id])
+  frontFaceId String    @unique
+  back        CardFace? @relation("CardBack", fields: [backFaceId], references: [id])
+  backFaceId  String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model CardFace {
+  id              String           @id @default(cuid())
+  textLayout      TextLayout       @default(TITLE_BANNER)
+  title           String?
+  bodyText        String?
+  imagePrompt     String?
+  activeImageId   String?
+  images          GeneratedImage[]
+  frontOfCard     Card?            @relation("CardFront")
+  backOfCards     Card[]           @relation("CardBack")
+  sharedBackOfSet CardSet?         @relation("SetSharedBacks", fields: [sharedBackSetId], references: [id], onDelete: Cascade)
+  sharedBackSetId String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+}
+
+model GeneratedImage {
+  id             String    @id @default(cuid())
+  face           CardFace  @relation(fields: [faceId], references: [id], onDelete: Cascade)
+  faceId         String
+  status         GenStatus @default(PENDING)
+  resolvedPrompt String
+  filePath       String?
+  widthPx        Int?
+  heightPx       Int?
+  error          String?
+  createdAt      DateTime  @default(now())
+}
