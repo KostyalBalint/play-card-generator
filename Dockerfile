@@ -56,6 +56,9 @@ COPY --from=builder /app/prisma ./prisma
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh \
   && mkdir -p /app/storage \
+  # prisma.config.ts needs dotenv (absent in this image); prisma auto-loads it from cwd.
+  # The entrypoint passes --schema and DATABASE_URL comes from the environment, so drop it.
+  && rm -f /app/prisma.config.ts \
   && chown -R node:node /app
 
 USER node
