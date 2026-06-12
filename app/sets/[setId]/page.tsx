@@ -64,7 +64,7 @@ export default async function SetPage({ params }: { params: Promise<{ setId: str
                 label={card.name}
               />
               <div className="truncate text-xs">
-                {card.number != null ? `#${card.number} ` : ""}
+                {set.showNumbers && card.number != null ? `#${card.number} ` : ""}
                 {card.name}
                 {card.copies > 1 ? ` ×${card.copies}` : ""}
               </div>

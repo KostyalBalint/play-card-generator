@@ -61,15 +61,17 @@ export function CardEditor({
             Name
             <input name="name" defaultValue={card.name} className={`${inputCls} mt-1 block w-48`} />
           </label>
-          <label className="text-xs font-medium text-zinc-500">
-            Number
-            <input
-              name="number"
-              type="number"
-              defaultValue={card.number ?? ""}
-              className={`${inputCls} mt-1 block w-20`}
-            />
-          </label>
+          {set.showNumbers && (
+            <label className="text-xs font-medium text-zinc-500">
+              Number
+              <input
+                name="number"
+                type="number"
+                defaultValue={card.number ?? ""}
+                className={`${inputCls} mt-1 block w-20`}
+              />
+            </label>
+          )}
           <label className="text-xs font-medium text-zinc-500">
             Copies in PDF
             <input
@@ -166,7 +168,7 @@ export function CardEditor({
       </div>
 
       <div className="h-[600px] xl:sticky xl:top-4">
-        <ChatPanel setId={set.id} onApply={applySuggestion} />
+        <ChatPanel setId={set.id} showNumbers={set.showNumbers} onApply={applySuggestion} />
       </div>
     </div>
   );

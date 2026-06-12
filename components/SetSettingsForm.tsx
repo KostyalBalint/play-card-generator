@@ -27,6 +27,15 @@ export function SetSettingsForm({ set }: { set: CardSet }) {
         </label>
         <textarea name="stylePrompt" defaultValue={set.stylePrompt} rows={3} className={inputCls} />
       </div>
+      <label className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          name="showNumbers"
+          defaultChecked={set.showNumbers}
+          className="h-4 w-4 rounded border-zinc-300"
+        />
+        Number the cards (shows a number badge on card images)
+      </label>
       <div className="flex gap-3">
         <div>
           <label className={labelCls}>Card size</label>

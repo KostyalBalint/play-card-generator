@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { updateFace, setActiveImage } from "@/actions/cards";
 import { CardFacePreview } from "./CardFacePreview";
+import { ImageLightbox } from "./ImageLightbox";
 import type { FaceDraft, FaceWithImages } from "@/lib/types";
 import { draftFromFace } from "@/lib/types";
 
@@ -31,6 +32,7 @@ export function FaceForm({
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [internalDraft, setInternalDraft] = useState<FaceDraft>(() => draftFromFace(face));
+  const [lightboxOpen, setLightboxOpen] = useState(false);
   const draft = controlledDraft ?? internalDraft;
   const setDraft = onDraftChange ?? setInternalDraft;
 
@@ -89,8 +91,19 @@ export function FaceForm({
 
   return (
     <div className="grid grid-cols-1 gap-6 md:grid-cols-[240px_1fr]">
+      {lightboxOpen && face.activeImageId && (
+        <ImageLightbox
+          src={`/api/images/${face.activeImageId}`}
+          alt={draft.title || "Card face"}
+          onClose={() => setLightboxOpen(false)}
+        />
+      )}
       <div className="space-y-3">
-        <div className="relative">
+        <div
+          className={`relative ${face.activeImageId ? "cursor-zoom-in" : ""}`}
+          onClick={() => face.activeImageId && setLightboxOpen(true)}
+          title={face.activeImageId ? "Click to zoom" : undefined}
+        >
           <CardFacePreview
             activeImageId={face.activeImageId}
             widthMm={widthMm}

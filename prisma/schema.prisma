@@ -31,6 +31,7 @@ model CardSet {
   name          String
   description   String?
   stylePrompt   String
+  showNumbers   Boolean    @default(false)
   sizePreset    SizePreset @default(TAROT)
   widthMm       Float      @default(70)
   heightMm      Float      @default(120)

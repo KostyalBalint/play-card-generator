@@ -36,7 +36,7 @@ export default async function CardPage({
             ← {set.name}
           </Link>
           <h1 className="text-2xl font-bold">
-            {card.number != null ? `#${card.number} ` : ""}
+            {set.showNumbers && card.number != null ? `#${card.number} ` : ""}
             {card.name}
           </h1>
         </div>

@@ -57,11 +57,13 @@ const faceUpdateSchema = z.object({
 });
 
 export async function updateCardMeta(cardId: string, formData: FormData) {
+  const numberRaw = formData.get("number");
   const card = await prisma.card.update({
     where: { id: cardId },
     data: {
       name: String(formData.get("name") ?? ""),
-      number: formData.get("number") ? Number(formData.get("number")) : null,
+      // field is hidden when the set has numbering disabled — leave the value untouched then
+      number: numberRaw === null ? undefined : numberRaw === "" ? null : Number(numberRaw),
       copies: Math.max(1, Number(formData.get("copies") ?? 1)),
     },
   });

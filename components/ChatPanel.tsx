@@ -9,9 +9,11 @@ import type { CardSuggestion } from "@/lib/chat";
 
 export function ChatPanel({
   setId,
+  showNumbers = false,
   onApply,
 }: {
   setId: string;
+  showNumbers?: boolean;
   onApply?: (suggestion: CardSuggestion) => void;
 }) {
   const router = useRouter();
@@ -66,7 +68,7 @@ export function ChatPanel({
                     className="mr-4 rounded-lg border border-emerald-300 bg-emerald-50 p-3 text-sm dark:border-emerald-800 dark:bg-emerald-950"
                   >
                     <div className="font-semibold">
-                      {s.number != null ? `#${s.number} ` : ""}
+                      {showNumbers && s.number != null ? `#${s.number} ` : ""}
                       {s.name}
                     </div>
                     {s.title && <div className="text-xs">Title: {s.title}</div>}
@@ -85,7 +87,7 @@ export function ChatPanel({
                       )}
                       <button
                         onClick={async () => {
-                          await createCard(setId, s);
+                          await createCard(setId, { ...s, number: showNumbers ? s.number : undefined });
                           router.refresh();
                         }}
                         className="rounded border border-emerald-600 px-2 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-100 dark:text-emerald-300"

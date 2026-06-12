@@ -32,10 +32,21 @@ export function buildImagePrompt(
     parts.push(`A small badge in the top-right corner shows the number ${cardNumber}.`);
   }
 
+  const { widthMm: w, heightMm: h } = set;
+  const orientation = w <= h ? "portrait" : "landscape";
+  const divisor = gcd(Math.round(w * 10), Math.round(h * 10));
+  const aspect = `${Math.round(w * 10) / divisor}:${Math.round(h * 10) / divisor}`;
   parts.push(
-    "The composition is a full-bleed playing card face in portrait orientation. " +
-      "All text must be fully legible, correctly spelled, and kept inside a safe margin of about 3mm from the card edges.",
+    `The composition is a full-bleed face of a physical playing card that will be printed at ${w} × ${h} mm ` +
+      `(${orientation} orientation, aspect ratio ${aspect}). Compose the image for exactly these proportions ` +
+      `with no letterboxing or borders. Because the printed card is small, keep details bold and uncluttered, ` +
+      `and make all text large enough to stay clearly legible at that print size, correctly spelled, ` +
+      `and kept inside a safe margin of about 3mm from the card edges.`,
   );
 
   return parts.join("\n\n");
+}
+
+function gcd(a: number, b: number): number {
+  return b === 0 ? a : gcd(b, a % b);
 }

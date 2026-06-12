@@ -18,7 +18,10 @@ export async function POST(req: Request) {
   if (!set) return new Response("Set not found", { status: 404 });
 
   const existingCards = set.cards
-    .map((c) => `- ${c.number != null ? `#${c.number} ` : ""}${c.name} (${c.front.textLayout}${c.front.title ? `, title: "${c.front.title}"` : ""})`)
+    .map(
+      (c) =>
+        `- ${set.showNumbers && c.number != null ? `#${c.number} ` : ""}${c.name} (${c.front.textLayout}${c.front.title ? `, title: "${c.front.title}"` : ""})`,
+    )
     .join("\n");
 
   const system = `You are a creative assistant helping design two-sided playing cards in the style of T.I.M.E Stories: themed decks where every card shares one visual style.
@@ -35,7 +38,8 @@ Guidelines:
 - Whenever you propose a concrete card, CALL the suggest_card tool — once per card. You may call it several times in one reply.
 - All card text is rendered BY THE IMAGE MODEL onto the artwork, so keep titles short and body text under ~30 words. Long text will be garbled.
 - The imagePrompt should describe the scene and composition only; never repeat the set's style prompt.
-- Avoid duplicating existing cards. Keep numbering consistent with the existing cards.
+- Avoid duplicating existing cards.
+${set.showNumbers ? "- Cards in this set are numbered; keep numbering consistent with the existing cards." : "- Cards in this set are NOT numbered; never set the number field."}
 - Stay on the set's theme and answer questions about card design, balance, and flavor.`;
 
   const result = streamText({

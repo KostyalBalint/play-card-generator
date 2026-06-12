@@ -26,7 +26,7 @@ async function faceContext(faceId: string) {
   });
   if (!face) return null;
   const set = face.sharedBackOfSet ?? face.frontOfCard?.set ?? face.backOfCards[0]?.set ?? null;
-  const cardNumber = face.frontOfCard?.number ?? null;
+  const cardNumber = set?.showNumbers ? face.frontOfCard?.number ?? null : null;
   return { face, set, cardNumber };
 }
 
