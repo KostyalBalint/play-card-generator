@@ -6,6 +6,7 @@ import { createCardAndOpen } from "@/actions/cards";
 import { deleteSet } from "@/actions/sets";
 import { SetSettingsForm } from "@/components/SetSettingsForm";
 import { BackDesignManager } from "@/components/BackDesignManager";
+import { LocationManager } from "@/components/LocationManager";
 import { CardFacePreview } from "@/components/CardFacePreview";
 
 export const dynamic = "force-dynamic";
@@ -17,11 +18,13 @@ export default async function SetPage({ params }: { params: Promise<{ setId: str
     include: {
       cards: { orderBy: { orderIndex: "asc" }, include: { front: true } },
       sharedBacks: { include: { images: { orderBy: { createdAt: "desc" } } } },
+      locations: { orderBy: { orderIndex: "asc" }, include: { _count: { select: { cards: true } } } },
     },
   });
   if (!set) notFound();
 
   const { widthMm, heightMm } = sizeForSet(set);
+  const looseCards = set.cards.filter((c) => c.locationId === null);
 
   return (
     <main className="mx-auto max-w-5xl space-y-8 p-8">
@@ -53,9 +56,21 @@ export default async function SetPage({ params }: { params: Promise<{ setId: str
       </p>
 
       <section className="space-y-3">
+        <h2 className="font-semibold">Locations</h2>
+        <p className="text-xs text-zinc-400">
+          Groups of cards (like T.I.M.E Stories locations): a shared back design, position labels, and an
+          optional panorama spanning the members&apos; backs.
+        </p>
+        <LocationManager setId={set.id} locations={set.locations} />
+      </section>
+
+      <section className="space-y-3">
         <h2 className="font-semibold">Cards</h2>
+        {looseCards.length === 0 && set.cards.length > 0 && (
+          <p className="text-xs text-zinc-400">All cards belong to locations.</p>
+        )}
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-          {set.cards.map((card) => (
+          {looseCards.map((card) => (
             <Link key={card.id} href={`/sets/${set.id}/cards/${card.id}`} className="space-y-1">
               <CardFacePreview
                 activeImageId={card.front.activeImageId}

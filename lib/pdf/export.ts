@@ -16,16 +16,27 @@ export async function exportSetPdf(setId: string): Promise<Uint8Array> {
   const set = await prisma.cardSet.findUniqueOrThrow({
     where: { id: setId },
     include: {
-      cards: { orderBy: { orderIndex: "asc" } },
+      cards: { orderBy: { orderIndex: "asc" }, include: { location: true } },
     },
   });
 
   const { widthMm, heightMm } = sizeForSet(set);
   const grid = computeGrid(widthMm, heightMm);
 
+  // Group located cards together (by location order, then card order); loose cards after.
+  const ordered = [...set.cards].sort((a, b) => {
+    if (a.location && b.location) {
+      if (a.location.orderIndex !== b.location.orderIndex) return a.location.orderIndex - b.location.orderIndex;
+      return a.orderIndex - b.orderIndex;
+    }
+    if (a.location) return -1;
+    if (b.location) return 1;
+    return a.orderIndex - b.orderIndex;
+  });
+
   // Expand copies into a flat list of {frontFaceId, backFaceId|null}
   const slots: { frontFaceId: string; backFaceId: string | null; name: string }[] = [];
-  for (const card of set.cards) {
+  for (const card of ordered) {
     const backFaceId = resolveBackFaceId(card, set);
     for (let c = 0; c < card.copies; c++) {
       slots.push({ frontFaceId: card.frontFaceId, backFaceId, name: card.name });

@@ -109,6 +109,7 @@ export function CardEditor({
               heightMm={heightMm}
               draft={frontDraft}
               onDraftChange={setFrontDraft}
+              backReferenceImageId={back?.activeImageId ?? null}
             />
           ) : (
             <div className="space-y-4">

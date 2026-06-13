@@ -3,7 +3,7 @@ import { toFile } from "openai";
 import sharp from "sharp";
 import { prisma } from "@/lib/prisma";
 import { openai, IMAGE_MODEL } from "@/lib/openai";
-import { buildEditPrompt, buildImagePrompt } from "@/lib/prompts";
+import { buildEditPrompt, buildImagePrompt, buildPromptWithReference, buildTextAlterPrompt } from "@/lib/prompts";
 import { readStorageFile, writeStorageFile } from "@/lib/storage";
 import { sizeForSet } from "@/lib/sizes";
 
@@ -23,12 +23,22 @@ async function faceContext(faceId: string) {
       frontOfCard: { include: { set: true } },
       backOfCards: { include: { set: true }, take: 1 },
       sharedBackOfSet: true,
+      backBaseOfLocation: { include: { set: true } },
+      panoramaOfLocation: { include: { set: true, cards: { where: { inPanorama: true } } } },
     },
   });
   if (!face) return null;
-  const set = face.sharedBackOfSet ?? face.frontOfCard?.set ?? face.backOfCards[0]?.set ?? null;
+  const set =
+    face.sharedBackOfSet ??
+    face.frontOfCard?.set ??
+    face.backOfCards[0]?.set ??
+    face.backBaseOfLocation?.set ??
+    face.panoramaOfLocation?.set ??
+    null;
   const cardNumber = set?.showNumbers ? face.frontOfCard?.number ?? null : null;
-  return { face, set, cardNumber };
+  // Panorama faces are generated wide: one image spanning N member cards side-by-side.
+  const panoramaSpan = face.panoramaOfLocation ? Math.max(1, face.panoramaOfLocation.cards.length) : 0;
+  return { face, set, cardNumber, panoramaSpan };
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ faceId: string }> }) {
@@ -37,11 +47,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ fac
   if (!ctx || !ctx.set) {
     return NextResponse.json({ error: "Face or owning set not found" }, { status: 404 });
   }
-  const { face, set, cardNumber } = ctx;
+  const { face, set, cardNumber, panoramaSpan } = ctx;
 
   // Optional body: { referenceImageId, alterPrompt } switches to image-edit mode.
   // The plain-generate client sends no body at all — req.json() would throw.
-  let body: { referenceImageId?: string; alterPrompt?: string } = {};
+  let body: { referenceImageId?: string; alterPrompt?: string; useFacePrompt?: boolean; alterText?: boolean } = {};
   try {
     body = await req.json();
   } catch {
@@ -50,7 +60,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ fac
 
   let reference: { id: string; png: Buffer } | null = null;
   if (body.referenceImageId) {
-    if (!body.alterPrompt?.trim()) {
+    // Reference modes: alter (free-text instruction), face-prompt (full front prompt
+    // for visual consistency), or text-alter (bake the face's title/body onto the image).
+    if (!body.useFacePrompt && !body.alterText && !body.alterPrompt?.trim()) {
       return NextResponse.json({ error: "alterPrompt is required in edit mode" }, { status: 400 });
     }
     const refImage = await prisma.generatedImage.findUnique({
@@ -61,6 +73,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ fac
             frontOfCard: true,
             backOfCards: { take: 1 },
             sharedBackOfSet: true,
+            backBaseOfLocation: true,
+            panoramaOfLocation: true,
           },
         },
       },
@@ -72,6 +86,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ fac
       refImage.face.sharedBackOfSet?.id ??
       refImage.face.frontOfCard?.setId ??
       refImage.face.backOfCards[0]?.setId ??
+      refImage.face.backBaseOfLocation?.setId ??
+      refImage.face.panoramaOfLocation?.setId ??
       null;
     if (refSetId !== set.id) {
       return NextResponse.json({ error: "Reference image belongs to a different set" }, { status: 400 });
@@ -80,7 +96,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ fac
   }
 
   const resolvedPrompt = reference
-    ? buildEditPrompt(body.alterPrompt!, set)
+    ? body.alterText
+      ? buildTextAlterPrompt(face, set)
+      : body.useFacePrompt
+        ? buildPromptWithReference(face, set, cardNumber)
+        : buildEditPrompt(body.alterPrompt!, set)
     : buildImagePrompt(face, set, cardNumber);
 
   const record = await prisma.generatedImage.create({
@@ -89,7 +109,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ fac
 
   try {
     const { widthMm, heightMm } = sizeForSet(set);
-    const size = apiImageSize(widthMm, heightMm);
+    // Panorama: one wide image spanning panoramaSpan cards side-by-side.
+    const targetRatio = panoramaSpan > 0 ? (panoramaSpan * widthMm) / heightMm : widthMm / heightMm;
+    const size = panoramaSpan > 0 ? "1536x1024" : apiImageSize(widthMm, heightMm);
 
     const result = reference
       ? await openai.images.edit({
@@ -97,14 +119,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ fac
           image: await toFile(reference.png, "ref.png", { type: "image/png" }),
           prompt: resolvedPrompt,
           size,
-          quality: "high",
+          quality: "medium",
           output_format: "png",
         })
       : await openai.images.generate({
           model: IMAGE_MODEL,
           prompt: resolvedPrompt,
           size,
-          quality: "high",
+          quality: "medium",
           output_format: "png",
         });
 
@@ -116,7 +138,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ fac
     const meta = await sharp(raw).metadata();
     const srcW = meta.width ?? 1024;
     const srcH = meta.height ?? 1536;
-    const targetRatio = widthMm / heightMm;
     let cropW = srcW;
     let cropH = Math.round(srcW / targetRatio);
     if (cropH > srcH) {

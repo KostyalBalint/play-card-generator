@@ -22,6 +22,7 @@ export function FaceForm({
   onDraftChange,
   defaultReferenceImageId = null,
   defaultAlterPrompt = "",
+  backReferenceImageId = null,
 }: {
   face: FaceWithImages;
   widthMm: number;
@@ -33,12 +34,15 @@ export function FaceForm({
   /** Fallback reference for alter-mode when this face has no image yet (e.g. fresh back variant) */
   defaultReferenceImageId?: string | null;
   defaultAlterPrompt?: string;
+  /** Card's back active image — enables "match back side" on a front face's main Generate. */
+  backReferenceImageId?: string | null;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [internalDraft, setInternalDraft] = useState<FaceDraft>(() => draftFromFace(face));
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [alterPrompt, setAlterPrompt] = useState(defaultAlterPrompt);
+  const [matchBack, setMatchBack] = useState(false);
   const draft = controlledDraft ?? internalDraft;
   const setDraft = onDraftChange ?? setInternalDraft;
 
@@ -77,17 +81,24 @@ export function FaceForm({
     });
   }
 
-  async function generate(referenceImageId?: string) {
+  async function generate(opts?: { referenceImageId?: string; useFacePrompt?: boolean; alterText?: boolean }) {
     setGenError(null);
     setGenerating(true);
     try {
       await updateFace(face.id, draft);
+      const referenceImageId = opts?.referenceImageId;
       const res = await fetch(`/api/faces/${face.id}/generate`, {
         method: "POST",
         ...(referenceImageId
           ? {
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ referenceImageId, alterPrompt }),
+              body: JSON.stringify(
+                opts?.alterText
+                  ? { referenceImageId, alterText: true }
+                  : opts?.useFacePrompt
+                    ? { referenceImageId, useFacePrompt: true }
+                    : { referenceImageId, alterPrompt },
+              ),
             }
           : {}),
       });
@@ -214,21 +225,61 @@ export function FaceForm({
           </p>
         )}
         {!readOnly && (
-          <div className="flex gap-2">
-            <button
-              onClick={save}
-              disabled={isPending || generating}
-              className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-800"
-            >
-              Save
-            </button>
-            <button
-              onClick={() => generate()}
-              disabled={generating || !draft.imagePrompt.trim()}
-              className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
-            >
-              {generating ? "Generating…" : face.activeImageId ? "Regenerate image" : "Generate image"}
-            </button>
+          <div className="space-y-2">
+            {backReferenceImageId && (
+              <label className="flex items-center gap-2 text-xs text-zinc-600 dark:text-zinc-300">
+                <input
+                  type="checkbox"
+                  checked={matchBack}
+                  onChange={(e) => setMatchBack(e.target.checked)}
+                  className="h-4 w-4"
+                />
+                Match back side — use the card&apos;s back image as a visual reference (same character/scene/style)
+              </label>
+            )}
+            <div className="flex gap-2">
+              <button
+                onClick={save}
+                disabled={isPending || generating}
+                className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-800"
+              >
+                Save
+              </button>
+              <button
+                onClick={() =>
+                  generate(
+                    matchBack && backReferenceImageId
+                      ? { referenceImageId: backReferenceImageId, useFacePrompt: true }
+                      : undefined,
+                  )
+                }
+                disabled={generating || !draft.imagePrompt.trim()}
+                className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+              >
+                {generating
+                  ? "Generating…"
+                  : matchBack && backReferenceImageId
+                    ? face.activeImageId
+                      ? "Regenerate from back"
+                      : "Generate from back"
+                    : face.activeImageId
+                      ? "Regenerate image"
+                      : "Generate image"}
+              </button>
+              {face.activeImageId && (
+                <button
+                  onClick={() => generate({ referenceImageId: face.activeImageId!, alterText: true })}
+                  disabled={
+                    generating ||
+                    (draft.textLayout !== "NONE" && !draft.title.trim() && !draft.bodyText.trim())
+                  }
+                  title="Bake the title/body text onto the current image without redrawing the artwork"
+                  className="rounded-md border border-blue-300 px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-50 disabled:opacity-50 dark:border-blue-800 dark:text-blue-300 dark:hover:bg-blue-950"
+                >
+                  Alter title/body
+                </button>
+              )}
+            </div>
           </div>
         )}
         {!readOnly && refImageId && (
@@ -245,7 +296,7 @@ export function FaceForm({
               onChange={(e) => setAlterPrompt(e.target.value)}
             />
             <button
-              onClick={() => generate(refImageId)}
+              onClick={() => generate({ referenceImageId: refImageId ?? undefined })}
               disabled={generating || !alterPrompt.trim()}
               className="rounded-md bg-violet-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-violet-500 disabled:opacity-50"
             >

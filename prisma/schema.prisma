@@ -36,26 +36,48 @@ model CardSet {
   widthMm       Float      @default(70)
   heightMm      Float      @default(120)
   cards         Card[]
+  locations     Location[]
   sharedBacks   CardFace[] @relation("SetSharedBacks")
   defaultBackId String?
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
 }
 
-model Card {
+model Location {
   id          String    @id @default(cuid())
   set         CardSet   @relation(fields: [setId], references: [id], onDelete: Cascade)
   setId       String
   name        String
-  number      Int?
+  description String?
   orderIndex  Int       @default(0)
-  copies      Int       @default(1)
-  front       CardFace  @relation("CardFront", fields: [frontFaceId], references: [id])
-  frontFaceId String    @unique
-  back        CardFace? @relation("CardBack", fields: [backFaceId], references: [id])
-  backFaceId  String?
+  backBase    CardFace? @relation("LocationBackBase", fields: [backBaseId], references: [id], onDelete: SetNull)
+  backBaseId  String?   @unique
+  panorama    CardFace? @relation("LocationPanorama", fields: [panoramaId], references: [id], onDelete: SetNull)
+  panoramaId  String?   @unique
+  cards       Card[]
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+}
+
+model Card {
+  id            String    @id @default(cuid())
+  set           CardSet   @relation(fields: [setId], references: [id], onDelete: Cascade)
+  setId         String
+  location      Location? @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  locationId    String?
+  positionLabel String?
+  backText      String?
+  inPanorama    Boolean   @default(false)
+  name          String
+  number        Int?
+  orderIndex    Int       @default(0)
+  copies        Int       @default(1)
+  front         CardFace  @relation("CardFront", fields: [frontFaceId], references: [id])
+  frontFaceId   String    @unique
+  back          CardFace? @relation("CardBack", fields: [backFaceId], references: [id])
+  backFaceId    String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 }
 
 model CardFace {
@@ -72,6 +94,8 @@ model CardFace {
   images          GeneratedImage[]
   frontOfCard     Card?            @relation("CardFront")
   backOfCards     Card[]           @relation("CardBack")
+  backBaseOfLocation Location?     @relation("LocationBackBase")
+  panoramaOfLocation Location?     @relation("LocationPanorama")
   sharedBackOfSet CardSet?         @relation("SetSharedBacks", fields: [sharedBackSetId], references: [id], onDelete: Cascade)
   sharedBackSetId String?
   createdAt       DateTime         @default(now())
