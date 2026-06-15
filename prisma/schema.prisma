@@ -88,6 +88,10 @@ model CardFace {
   imagePrompt     String?
   activeImageId   String?
   variantLabel    String?
+  // When true, the position label/back text is drawn as a rendered overlay at
+  // preview + PDF time (cheap, style-consistent, reorder-safe) instead of being
+  // baked into the image. Used by panorama member backs.
+  labelOverlay    Boolean          @default(false)
   basedOnFace     CardFace?        @relation("FaceVariants", fields: [basedOnFaceId], references: [id], onDelete: SetNull)
   basedOnFaceId   String?
   variants        CardFace[]       @relation("FaceVariants")

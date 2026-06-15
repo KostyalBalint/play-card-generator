@@ -23,6 +23,8 @@ export function FaceForm({
   defaultReferenceImageId = null,
   defaultAlterPrompt = "",
   backReferenceImageId = null,
+  overlayLabel = null,
+  saveLabel = "Save",
 }: {
   face: FaceWithImages;
   widthMm: number;
@@ -36,6 +38,10 @@ export function FaceForm({
   defaultAlterPrompt?: string;
   /** Card's back active image — enables "match back side" on a front face's main Generate. */
   backReferenceImageId?: string | null;
+  /** Rendered (not baked) position label drawn over the preview. */
+  overlayLabel?: string | null;
+  /** Label for the plain (no-regen) save button. */
+  saveLabel?: string;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -136,6 +142,7 @@ export function FaceForm({
             widthMm={widthMm}
             heightMm={heightMm}
             label={draft.title || "No image yet"}
+            overlayLabel={overlayLabel}
           />
           {generating && (
             <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/40">
@@ -241,9 +248,10 @@ export function FaceForm({
               <button
                 onClick={save}
                 disabled={isPending || generating}
+                title="Save the text & prompt below without regenerating the image"
                 className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-800"
               >
-                Save
+                {saveLabel}
               </button>
               <button
                 onClick={() =>

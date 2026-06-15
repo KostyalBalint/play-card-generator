@@ -99,9 +99,18 @@ export async function createCardInLocation(locationId: string, formData: FormDat
 export async function updateLocationCard(cardId: string, formData: FormData) {
   const positionLabel = String(formData.get("positionLabel") ?? "").trim() || null;
   const backText = String(formData.get("backText") ?? "").trim() || null;
+  const copiesRaw = formData.get("copies");
+  const numberRaw = formData.get("number");
   const card = await prisma.card.update({
     where: { id: cardId },
-    data: { name: String(formData.get("name") ?? ""), positionLabel, backText },
+    data: {
+      name: String(formData.get("name") ?? ""),
+      positionLabel,
+      backText,
+      copies: copiesRaw === null ? undefined : Math.max(1, Number(copiesRaw) || 1),
+      // hidden when numbering is off → leave untouched
+      number: numberRaw === null ? undefined : numberRaw === "" ? null : Number(numberRaw),
+    },
   });
   // Keep the generic back variant's text in sync (does NOT regenerate the image).
   if (card.backFaceId) {
@@ -186,15 +195,19 @@ export async function splitPanorama(locationId: string) {
       .toBuffer();
 
     // Each member needs a dedicated, non-variant back face to hold its slice.
+    // labelOverlay = true: the position letter is rendered over the slice at
+    // preview/PDF time, not baked — cheap, consistent, and reorder-safe.
     let backFaceId = card.backFaceId;
     if (backFaceId) {
       const face = await prisma.cardFace.findUnique({ where: { id: backFaceId } });
       if (!face || face.basedOnFaceId !== null || face.sharedBackSetId !== null) backFaceId = null;
     }
     if (!backFaceId) {
-      const created = await prisma.cardFace.create({ data: { textLayout: "NONE" } });
+      const created = await prisma.cardFace.create({ data: { textLayout: "NONE", labelOverlay: true } });
       backFaceId = created.id;
       await prisma.card.update({ where: { id: card.id }, data: { backFaceId } });
+    } else {
+      await prisma.cardFace.update({ where: { id: backFaceId }, data: { labelOverlay: true } });
     }
 
     const record = await prisma.generatedImage.create({

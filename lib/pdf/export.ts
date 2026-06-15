@@ -4,6 +4,7 @@ import { readStorageFile } from "@/lib/storage";
 import { coverCrop } from "@/lib/imagecrop";
 import { sizeForSet } from "@/lib/sizes";
 import { resolveBackFaceId } from "@/lib/faces";
+import { buildBackText } from "@/lib/locations";
 import { A4, computeGrid, Grid, mmToPt, Slot } from "./grid";
 
 type FaceSprite =
@@ -35,12 +36,18 @@ export async function exportSetPdf(setId: string): Promise<Uint8Array> {
     return a.orderIndex - b.orderIndex;
   });
 
-  // Expand copies into a flat list of {frontFaceId, backFaceId|null}
-  const slots: { frontFaceId: string; backFaceId: string | null; name: string }[] = [];
+  // Expand copies into a flat list of {frontFaceId, backFaceId|null, backLabel}
+  const slots: {
+    frontFaceId: string;
+    backFaceId: string | null;
+    name: string;
+    backLabel: string | null;
+  }[] = [];
   for (const card of ordered) {
     const backFaceId = resolveBackFaceId(card, set);
+    const backLabel = buildBackText(card) || null;
     for (let c = 0; c < card.copies; c++) {
-      slots.push({ frontFaceId: card.frontFaceId, backFaceId, name: card.name });
+      slots.push({ frontFaceId: card.frontFaceId, backFaceId, name: card.name, backLabel });
     }
   }
 
@@ -54,11 +61,14 @@ export async function exportSetPdf(setId: string): Promise<Uint8Array> {
     if (s.backFaceId) faceIds.add(s.backFaceId);
   }
   const sprites = new Map<string, FaceSprite>();
+  // Faces whose label is drawn as a rendered overlay (panorama members), not baked.
+  const overlayFaces = new Set<string>();
   const faces = await prisma.cardFace.findMany({
     where: { id: { in: [...faceIds] } },
     include: { images: true },
   });
   for (const face of faces) {
+    if (face.labelOverlay) overlayFaces.add(face.id);
     const active = face.images.find(
       (img) => img.id === face.activeImageId && img.status === "DONE" && img.filePath,
     );
@@ -89,7 +99,9 @@ export async function exportSetPdf(setId: string): Promise<Uint8Array> {
       const sprite: FaceSprite = slot.backFaceId
         ? sprites.get(slot.backFaceId)!
         : { kind: "placeholder", label: "card back" };
-      drawFace(backPage, sprite, grid.backSlots[idx], grid, font, slot.name);
+      const overlay =
+        slot.backFaceId && overlayFaces.has(slot.backFaceId) ? slot.backLabel : null;
+      drawFace(backPage, sprite, grid.backSlots[idx], grid, font, slot.name, overlay);
     });
     drawCutMarks(backPage, chunk.length, grid.backSlots, grid);
   }
@@ -104,6 +116,7 @@ function drawFace(
   grid: Grid,
   font: Awaited<ReturnType<PDFDocument["embedFont"]>>,
   name: string,
+  overlayLabel: string | null = null,
 ) {
   const x = mmToPt(slot.xMm);
   // pdf-lib origin is bottom-left; slot coords are top-left mm
@@ -113,6 +126,7 @@ function drawFace(
 
   if (sprite.kind === "image") {
     page.drawImage(sprite.image, { x, y, width: w, height: h });
+    if (overlayLabel) drawOverlayLabel(page, overlayLabel, x, y, w, h, font);
   } else {
     page.drawRectangle({
       x,
@@ -134,6 +148,44 @@ function drawFace(
       color: rgb(0.4, 0.4, 0.4),
     });
   }
+}
+
+/** Rendered position label drawn over a back image (top-left corner plate). */
+function drawOverlayLabel(
+  page: PDFPage,
+  text: string,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  font: Awaited<ReturnType<PDFDocument["embedFont"]>>,
+) {
+  const size = h * 0.1;
+  const padX = size * 0.4;
+  const padY = size * 0.25;
+  const inset = w * 0.05;
+  const textW = font.widthOfTextAtSize(text, size);
+  const plateW = textW + 2 * padX;
+  const plateH = size + 2 * padY;
+  // top-left corner (pdf origin bottom-left → top is y + h)
+  const plateX = x + inset;
+  const plateY = y + h - inset - plateH;
+  page.drawRectangle({
+    x: plateX,
+    y: plateY,
+    width: plateW,
+    height: plateH,
+    color: rgb(0, 0, 0),
+    opacity: 0.55,
+    // pdf-lib has no border radius; a thin dark plate reads fine at print size.
+  });
+  page.drawText(text, {
+    x: plateX + padX,
+    y: plateY + padY,
+    size,
+    font,
+    color: rgb(1, 1, 1),
+  });
 }
 
 /** Tick marks extending outward from each card corner — never across card faces. */

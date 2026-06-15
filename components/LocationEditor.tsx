@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -9,13 +8,13 @@ import {
   createLocationPanorama,
   deleteLocation,
   reorderLocation,
-  setInPanorama,
   splitPanorama,
-  updateLocationCard,
   updateLocationMeta,
 } from "@/actions/locations";
-import { backAlterPrompt } from "@/lib/locations";
+import { overlayLabelFor } from "@/lib/overlay";
 import { FaceForm } from "./FaceForm";
+import { CardFacePreview } from "./CardFacePreview";
+import { CardFaceModal } from "./CardFaceModal";
 import type { Card, CardSet, FaceWithImages, Location } from "@/lib/types";
 
 const inputCls =
@@ -27,6 +26,16 @@ type FullLocation = Location & {
   panorama: FaceWithImages | null;
   cards: CardWithFaces[];
 };
+
+/** Whether a face has a ready image / is mid-generation / failed / empty. */
+function faceState(face: FaceWithImages | null): "none" | "pending" | "done" | "failed" {
+  if (!face) return "none";
+  if (face.activeImageId) return "done";
+  const latest = face.images[0];
+  if (latest?.status === "PENDING") return "pending";
+  if (latest?.status === "FAILED") return "failed";
+  return "none";
+}
 
 export function LocationEditor({
   set,
@@ -41,9 +50,12 @@ export function LocationEditor({
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
+  const [openCardId, setOpenCardId] = useState<string | null>(null);
   const members = location.cards.filter((c) => c.inPanorama);
   const refresh = () => router.refresh();
   const run = (fn: () => Promise<unknown>) => startTransition(async () => { await fn(); refresh(); });
+
+  const openCard = location.cards.find((c) => c.id === openCardId) ?? null;
 
   return (
     <div className="space-y-8">
@@ -64,89 +76,98 @@ export function LocationEditor({
         </button>
       </form>
 
-      {/* Generic numbered back design */}
-      <section className="space-y-3 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-        <h2 className="font-semibold">Generic back design</h2>
-        <p className="text-xs text-zinc-400">
-          The shared back for non-panorama cards. Each card gets a copy showing its position label; use
-          “Alter image” on a card below to bake in its letter.
-        </p>
-        {location.backBase ? (
-          <FaceForm face={location.backBase} widthMm={widthMm} heightMm={heightMm} />
-        ) : (
-          <button
-            onClick={() => run(() => createLocationBackBase(location.id))}
-            className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500"
-          >
-            Create back base
-          </button>
-        )}
-      </section>
-
-      {/* Panorama */}
-      <section className="space-y-3 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-        <div className="flex items-center justify-between">
-          <h2 className="font-semibold">Panorama (spanning back)</h2>
-          {location.panorama && (
+      {/* Location backs: generic back design + panorama, side by side */}
+      <section className="grid gap-4 lg:grid-cols-1">
+        <div className="space-y-3 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+          <h2 className="font-semibold">Generic back design</h2>
+          <p className="text-xs text-zinc-400">
+            Shared back for non-panorama cards. Each card gets a copy showing its position label.
+          </p>
+          {location.backBase ? (
+            <FaceForm face={location.backBase} widthMm={widthMm} heightMm={heightMm} />
+          ) : (
             <button
-              onClick={() => run(() => splitPanorama(location.id))}
-              disabled={members.length === 0 || !location.panorama?.activeImageId}
-              className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
-              title={members.length === 0 ? "Mark cards as panorama members first" : "Slice into member backs"}
+              onClick={() => run(() => createLocationBackBase(location.id))}
+              className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500"
             >
-              Split to cards ({members.length})
+              Create back base
             </button>
           )}
         </div>
-        <p className="text-xs text-zinc-400">
-          One wide image whose slices become the backs of the {members.length} panorama member
-          {members.length === 1 ? "" : "s"} (laid side by side they reconstruct the scene). Generate it,
-          then “Split to cards”, then alter each slice to add text.
-        </p>
-        {location.panorama ? (
-          <FaceForm
-            face={location.panorama}
-            widthMm={Math.max(1, members.length) * widthMm}
-            heightMm={heightMm}
-          />
-        ) : (
-          <button
-            onClick={() => run(() => createLocationPanorama(location.id))}
-            className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500"
-          >
-            Create panorama
-          </button>
-        )}
+
+        <div className="space-y-3 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+          <div className="flex items-center justify-between">
+            <h2 className="font-semibold">Panorama (spanning back)</h2>
+            {location.panorama && (
+              <button
+                onClick={() => run(() => splitPanorama(location.id))}
+                disabled={members.length === 0 || !location.panorama?.activeImageId}
+                className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
+                title={members.length === 0 ? "Mark cards as panorama members first" : "Slice into member backs"}
+              >
+                Split to cards ({members.length})
+              </button>
+            )}
+          </div>
+          <p className="text-xs text-zinc-400">
+            One wide image sliced into the backs of the {members.length} panorama member
+            {members.length === 1 ? "" : "s"}. Generate it, then “Split to cards” — each slice&apos;s
+            position letter is drawn as an overlay automatically (no per-card generation).
+          </p>
+          {location.panorama ? (
+            <FaceForm
+              face={location.panorama}
+              widthMm={Math.max(1, members.length) * widthMm}
+              heightMm={heightMm}
+            />
+          ) : (
+            <button
+              onClick={() => run(() => createLocationPanorama(location.id))}
+              className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500"
+            >
+              Create panorama
+            </button>
+          )}
+        </div>
       </section>
 
-      {/* Cards */}
+      {/* Cards grid */}
       <section className="space-y-3">
         <h2 className="font-semibold">Cards</h2>
         <p className="text-xs text-zinc-400">
-          Card A is the main/establishing card. Reordering relabels but does not regenerate back images —
-          re-run “Alter image” after reordering.
+          Card A is the main/establishing card. Click a card to edit its front and back. Reordering
+          relabels live — panorama overlays follow automatically; baked generic backs need re-altering.
         </p>
-        <div className="space-y-3">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
           {location.cards.map((card, i) => (
-            <LocationCardRow
+            <CardTile
               key={card.id}
-              set={set}
-              location={location}
               card={card}
               index={i}
               total={location.cards.length}
               widthMm={widthMm}
               heightMm={heightMm}
-              onRun={run}
+              onOpen={() => setOpenCardId(card.id)}
+              onMove={(dir) => {
+                const ids = location.cards.map((c) => c.id);
+                const j = i + dir;
+                if (j < 0 || j >= ids.length) return;
+                [ids[i], ids[j]] = [ids[j], ids[i]];
+                run(() => reorderLocation(location.id, ids));
+              }}
             />
           ))}
+          <form
+            action={createCardInLocation.bind(null, location.id)}
+            className="flex flex-col justify-center gap-2 rounded-xl border-2 border-dashed border-zinc-300 p-3 dark:border-zinc-700"
+            style={{ aspectRatio: `${widthMm} / ${heightMm}` }}
+          >
+            <input name="name" placeholder="Card name" required className={`${inputCls} w-full text-xs`} />
+            <button className="rounded-md bg-blue-600 px-2 py-1 text-xs font-medium text-white hover:bg-blue-500">
+              + Add card
+            </button>
+          </form>
         </div>
-        <form action={createCardInLocation.bind(null, location.id)} className="flex gap-2">
-          <input name="name" placeholder="New card name" required className={`${inputCls} w-56`} />
-          <button className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500">
-            + Add card
-          </button>
-        </form>
       </section>
 
       <form action={deleteLocation.bind(null, location.id)}>
@@ -154,119 +175,111 @@ export function LocationEditor({
           Delete location
         </button>
       </form>
+
+      {openCard && (
+        <CardFaceModal
+          set={set}
+          card={openCard}
+          backBase={location.backBase}
+          widthMm={widthMm}
+          heightMm={heightMm}
+          onClose={() => setOpenCardId(null)}
+        />
+      )}
     </div>
   );
 }
 
-function LocationCardRow({
-  set,
-  location,
+const STATUS_DOT: Record<ReturnType<typeof faceState>, string> = {
+  none: "bg-zinc-300 dark:bg-zinc-600",
+  pending: "bg-amber-400 animate-pulse",
+  done: "bg-emerald-500",
+  failed: "bg-red-500",
+};
+
+function CardTile({
   card,
   index,
   total,
   widthMm,
   heightMm,
-  onRun,
+  onOpen,
+  onMove,
 }: {
-  set: CardSet;
-  location: FullLocation;
   card: CardWithFaces;
   index: number;
   total: number;
   widthMm: number;
   heightMm: number;
-  onRun: (fn: () => Promise<unknown>) => void;
+  onOpen: () => void;
+  onMove: (dir: -1 | 1) => void;
 }) {
-  const [open, setOpen] = useState(false);
-
-  function move(dir: -1 | 1) {
-    const ids = location.cards.map((c) => c.id);
-    const j = index + dir;
-    if (j < 0 || j >= ids.length) return;
-    [ids[index], ids[j]] = [ids[j], ids[index]];
-    onRun(() => reorderLocation(location.id, ids));
-  }
+  const overlayLabel = overlayLabelFor(card, card.back);
+  const frontState = faceState(card.front);
+  const backState = faceState(card.back);
+  // Panorama members ARE their back image (the spanning scene) — show back large, front inset.
+  const backIsMain = card.inPanorama;
 
   return (
-    <div className="rounded-xl border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
-      <div className="flex flex-wrap items-end gap-3">
-        <span className="rounded-md bg-zinc-100 px-2 py-1 text-sm font-bold dark:bg-zinc-800">
+    <div className="group space-y-1.5">
+      <button
+        onClick={onOpen}
+        className="relative block w-full text-left transition hover:opacity-95"
+        title="Edit front & back"
+      >
+        <CardFacePreview
+          activeImageId={backIsMain ? card.back?.activeImageId : card.front.activeImageId}
+          widthMm={widthMm}
+          heightMm={heightMm}
+          label={backIsMain ? "back" : card.name}
+          overlayLabel={backIsMain ? overlayLabel : null}
+          className="ring-1 ring-transparent group-hover:ring-blue-400"
+        />
+        <span className="absolute left-1.5 top-1.5 rounded bg-black/60 px-1.5 py-0.5 text-xs font-bold text-white">
           {card.positionLabel ?? "?"}
         </span>
-        <form action={(fd) => updateLocationCard(card.id, fd)} className="flex flex-wrap items-end gap-2">
-          <label className="text-xs font-medium text-zinc-500">
-            Name
-            <input name="name" defaultValue={card.name} className={`${inputCls} mt-1 block w-40`} />
-          </label>
-          <label className="text-xs font-medium text-zinc-500">
-            Label
-            <input name="positionLabel" defaultValue={card.positionLabel ?? ""} className={`${inputCls} mt-1 block w-16`} />
-          </label>
-          <label className="text-xs font-medium text-zinc-500">
-            Back text (override)
-            <input name="backText" defaultValue={card.backText ?? ""} placeholder="e.g. No entry" className={`${inputCls} mt-1 block w-40`} />
-          </label>
-          <button className="rounded-md border border-zinc-300 px-2 py-1.5 text-sm hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800">
-            Save
-          </button>
-        </form>
-
-        <label className="flex items-center gap-1 text-xs">
-          <input
-            type="checkbox"
-            checked={card.inPanorama}
-            onChange={(e) => onRun(() => setInPanorama(card.id, e.target.checked))}
-            className="h-4 w-4"
+        {/* Other face inset, bottom-right */}
+        <span className="absolute bottom-1.5 right-1.5 w-1/3 overflow-hidden rounded-md shadow ring-1 ring-black/20">
+          <CardFacePreview
+            activeImageId={backIsMain ? card.front.activeImageId : card.back?.activeImageId}
+            widthMm={widthMm}
+            heightMm={heightMm}
+            label={backIsMain ? "front" : "back"}
+            overlayLabel={backIsMain ? null : overlayLabel}
           />
-          Panorama member
-        </label>
+        </span>
+        {card.inPanorama && (
+          <span className="absolute right-1.5 top-1.5 rounded bg-violet-600/90 px-1.5 py-0.5 text-[10px] font-medium text-white">
+            pano
+          </span>
+        )}
+      </button>
 
-        <div className="ml-auto flex items-center gap-2">
-          <button onClick={() => move(-1)} disabled={index === 0} className="rounded border px-2 text-sm disabled:opacity-30">↑</button>
-          <button onClick={() => move(1)} disabled={index === total - 1} className="rounded border px-2 text-sm disabled:opacity-30">↓</button>
-          <Link
-            href={`/sets/${set.id}/cards/${card.id}`}
-            className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
+      <div className="flex items-center gap-1.5 text-xs">
+        <span className="flex items-center gap-1" title={`front: ${frontState}`}>
+          <span className={`inline-block h-2 w-2 rounded-full ${STATUS_DOT[frontState]}`} />F
+        </span>
+        <span className="flex items-center gap-1" title={`back: ${backState}`}>
+          <span className={`inline-block h-2 w-2 rounded-full ${STATUS_DOT[backState]}`} />B
+        </span>
+        <span className="ml-auto flex gap-0.5">
+          <button
+            onClick={() => onMove(-1)}
+            disabled={index === 0}
+            className="rounded border px-1 disabled:opacity-30 dark:border-zinc-700"
           >
-            Edit front
-          </Link>
-          <button onClick={() => setOpen(!open)} className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800">
-            {open ? "Hide back" : "Edit back"}
+            ↑
           </button>
-        </div>
+          <button
+            onClick={() => onMove(1)}
+            disabled={index === total - 1}
+            className="rounded border px-1 disabled:opacity-30 dark:border-zinc-700"
+          >
+            ↓
+          </button>
+        </span>
       </div>
-
-      {open && (
-        <div className="mt-3 border-t border-zinc-200 pt-3 dark:border-zinc-800">
-          {card.inPanorama ? (
-            card.back?.activeImageId ? (
-              <FaceForm
-                face={card.back}
-                widthMm={widthMm}
-                heightMm={heightMm}
-                defaultAlterPrompt={backAlterPrompt(card)}
-              />
-            ) : (
-              <p className="text-sm text-zinc-400">
-                Panorama member — generate the panorama and click “Split to cards” to fill this back, then
-                alter it here to add text.
-              </p>
-            )
-          ) : card.back ? (
-            <FaceForm
-              face={card.back}
-              widthMm={widthMm}
-              heightMm={heightMm}
-              defaultReferenceImageId={location.backBase?.activeImageId ?? null}
-              defaultAlterPrompt={backAlterPrompt(card)}
-            />
-          ) : (
-            <p className="text-sm text-zinc-400">
-              No back yet — create the generic back base above; new cards then get a numbered copy.
-            </p>
-          )}
-        </div>
-      )}
+      <div className="truncate text-xs text-zinc-500">{card.name}</div>
     </div>
   );
 }
