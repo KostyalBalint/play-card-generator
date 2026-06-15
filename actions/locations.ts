@@ -6,6 +6,7 @@ import sharp from "sharp";
 import { prisma } from "@/lib/prisma";
 import { sizeForSet } from "@/lib/sizes";
 import { writeStorageFile, readStorageFile } from "@/lib/storage";
+import { coverCrop } from "@/lib/imagecrop";
 import { labelForIndex } from "@/lib/locations";
 
 // Per-card face cleanup filter — same as actions/backs.ts: a face owned by no
@@ -161,32 +162,26 @@ export async function splitPanorama(locationId: string) {
   if (!active?.filePath) throw new Error("Generate the panorama image first");
   if (loc.cards.length === 0) throw new Error("Mark at least one card as a panorama member");
 
-  const source = await readStorageFile(active.filePath);
+  const { widthMm, heightMm } = sizeForSet(loc.set);
+  const n = loc.cards.length;
+
+  // The master is stored uncropped; crop it to the intended wide ratio first so the
+  // N equal strips are each exactly card-aspect and tile seamlessly.
+  const raw = await readStorageFile(active.filePath);
+  const source = await coverCrop(raw, (n * widthMm) / heightMm);
   const meta = await sharp(source).metadata();
   const W = meta.width ?? 1536;
   const H = meta.height ?? 1024;
-  const n = loc.cards.length;
   const stripW = Math.floor(W / n);
-
-  const { widthMm, heightMm } = sizeForSet(loc.set);
-  const cardRatio = widthMm / heightMm;
 
   for (let i = 0; i < n; i++) {
     const card = loc.cards[i];
     const left = i * stripW;
     const sliceW = i === n - 1 ? W - left : stripW;
-
-    // Cover-crop the strip to the exact card aspect.
-    let cropW = sliceW;
-    let cropH = Math.round(sliceW / cardRatio);
-    if (cropH > H) {
-      cropH = H;
-      cropW = Math.round(H * cardRatio);
-    }
-    const offsetX = left + Math.floor((sliceW - cropW) / 2);
-    const offsetY = Math.floor((H - cropH) / 2);
+    const cropW = sliceW;
+    const cropH = H;
     const png = await sharp(source)
-      .extract({ left: offsetX, top: offsetY, width: cropW, height: cropH })
+      .extract({ left, top: 0, width: sliceW, height: H })
       .png()
       .toBuffer();
 

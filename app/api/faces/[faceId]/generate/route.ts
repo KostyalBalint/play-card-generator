@@ -110,7 +110,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ fac
   try {
     const { widthMm, heightMm } = sizeForSet(set);
     // Panorama: one wide image spanning panoramaSpan cards side-by-side.
-    const targetRatio = panoramaSpan > 0 ? (panoramaSpan * widthMm) / heightMm : widthMm / heightMm;
     const size = panoramaSpan > 0 ? "1536x1024" : apiImageSize(widthMm, heightMm);
 
     const result = reference
@@ -133,26 +132,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ fac
     const b64 = result.data?.[0]?.b64_json;
     if (!b64) throw new Error("No image data in OpenAI response");
 
-    // Cover-crop to the exact card aspect ratio so the PDF never distorts
+    // Store the uncropped master so re-editing keeps the original margin (no progressive
+    // zoom). Card-aspect cropping happens only at PDF export time.
     const raw = Buffer.from(b64, "base64");
-    const meta = await sharp(raw).metadata();
-    const srcW = meta.width ?? 1024;
-    const srcH = meta.height ?? 1536;
-    let cropW = srcW;
-    let cropH = Math.round(srcW / targetRatio);
-    if (cropH > srcH) {
-      cropH = srcH;
-      cropW = Math.round(srcH * targetRatio);
-    }
-    const png = await sharp(raw)
-      .extract({
-        left: Math.floor((srcW - cropW) / 2),
-        top: Math.floor((srcH - cropH) / 2),
-        width: cropW,
-        height: cropH,
-      })
-      .png()
-      .toBuffer();
+    const png = await sharp(raw).png().toBuffer();
+    const meta = await sharp(png).metadata();
 
     const filePath = `images/${set.id}/${record.id}.png`;
     await writeStorageFile(filePath, png);
@@ -160,7 +144,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ fac
     await prisma.$transaction([
       prisma.generatedImage.update({
         where: { id: record.id },
-        data: { status: "DONE", filePath, widthPx: cropW, heightPx: cropH },
+        data: { status: "DONE", filePath, widthPx: meta.width ?? null, heightPx: meta.height ?? null },
       }),
       prisma.cardFace.update({
         where: { id: faceId },

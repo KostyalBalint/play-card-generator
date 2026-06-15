@@ -1,6 +1,7 @@
 import { PDFDocument, PDFImage, PDFPage, rgb, StandardFonts } from "pdf-lib";
 import { prisma } from "@/lib/prisma";
 import { readStorageFile } from "@/lib/storage";
+import { coverCrop } from "@/lib/imagecrop";
 import { sizeForSet } from "@/lib/sizes";
 import { resolveBackFaceId } from "@/lib/faces";
 import { A4, computeGrid, Grid, mmToPt, Slot } from "./grid";
@@ -63,7 +64,9 @@ export async function exportSetPdf(setId: string): Promise<Uint8Array> {
     );
     if (active?.filePath) {
       const bytes = await readStorageFile(active.filePath);
-      sprites.set(face.id, { kind: "image", image: await pdf.embedPng(bytes) });
+      // Masters are stored uncropped; cover-crop to the card aspect for print.
+      const cropped = await coverCrop(bytes, widthMm / heightMm);
+      sprites.set(face.id, { kind: "image", image: await pdf.embedPng(cropped) });
     } else {
       sprites.set(face.id, { kind: "placeholder", label: face.title ?? "no image" });
     }
