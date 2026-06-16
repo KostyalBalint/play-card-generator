@@ -23,7 +23,6 @@ async function faceContext(faceId: string) {
       frontOfCard: { include: { set: true } },
       backOfCards: { include: { set: true }, take: 1 },
       sharedBackOfSet: true,
-      backBaseOfLocation: { include: { set: true } },
       panoramaOfLocation: { include: { set: true, cards: { where: { inPanorama: true } } } },
     },
   });
@@ -32,7 +31,6 @@ async function faceContext(faceId: string) {
     face.sharedBackOfSet ??
     face.frontOfCard?.set ??
     face.backOfCards[0]?.set ??
-    face.backBaseOfLocation?.set ??
     face.panoramaOfLocation?.set ??
     null;
   const cardNumber = set?.showNumbers ? face.frontOfCard?.number ?? null : null;
@@ -73,7 +71,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ fac
             frontOfCard: true,
             backOfCards: { take: 1 },
             sharedBackOfSet: true,
-            backBaseOfLocation: true,
             panoramaOfLocation: true,
           },
         },
@@ -86,7 +83,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ fac
       refImage.face.sharedBackOfSet?.id ??
       refImage.face.frontOfCard?.setId ??
       refImage.face.backOfCards[0]?.setId ??
-      refImage.face.backBaseOfLocation?.setId ??
       refImage.face.panoramaOfLocation?.setId ??
       null;
     if (refSetId !== set.id) {

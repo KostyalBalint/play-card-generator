@@ -4,7 +4,6 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   createCardInLocation,
-  createLocationBackBase,
   createLocationPanorama,
   deleteLocation,
   reorderLocation,
@@ -22,7 +21,6 @@ const inputCls =
 
 type CardWithFaces = Card & { front: FaceWithImages; back: FaceWithImages | null };
 type FullLocation = Location & {
-  backBase: FaceWithImages | null;
   panorama: FaceWithImages | null;
   cards: CardWithFaces[];
 };
@@ -39,11 +37,13 @@ function faceState(face: FaceWithImages | null): "none" | "pending" | "done" | "
 
 export function LocationEditor({
   set,
+  sharedBacks,
   location,
   widthMm,
   heightMm,
 }: {
   set: CardSet;
+  sharedBacks: FaceWithImages[];
   location: FullLocation;
   widthMm: number;
   heightMm: number;
@@ -76,25 +76,8 @@ export function LocationEditor({
         </button>
       </form>
 
-      {/* Location backs: generic back design + panorama, side by side */}
-      <section className="grid gap-4 lg:grid-cols-1">
-        <div className="space-y-3 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-          <h2 className="font-semibold">Generic back design</h2>
-          <p className="text-xs text-zinc-400">
-            Shared back for non-panorama cards. Each card gets a copy showing its position label.
-          </p>
-          {location.backBase ? (
-            <FaceForm face={location.backBase} widthMm={widthMm} heightMm={heightMm} />
-          ) : (
-            <button
-              onClick={() => run(() => createLocationBackBase(location.id))}
-              className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500"
-            >
-              Create back base
-            </button>
-          )}
-        </div>
-
+      {/* Panorama spanning back */}
+      <section className="space-y-3">
         <div className="space-y-3 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
           <div className="flex items-center justify-between">
             <h2 className="font-semibold">Panorama (spanning back)</h2>
@@ -180,7 +163,7 @@ export function LocationEditor({
         <CardFaceModal
           set={set}
           card={openCard}
-          backBase={location.backBase}
+          sharedBacks={sharedBacks}
           widthMm={widthMm}
           heightMm={heightMm}
           onClose={() => setOpenCardId(null)}
@@ -217,8 +200,7 @@ function CardTile({
   const overlayLabel = overlayLabelFor(card, card.back);
   const frontState = faceState(card.front);
   const backState = faceState(card.back);
-  // Panorama members ARE their back image (the spanning scene) — show back large, front inset.
-  const backIsMain = card.inPanorama;
+  const backIsMain = true;
 
   return (
     <div className="group space-y-1.5">

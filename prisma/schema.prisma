@@ -50,8 +50,6 @@ model Location {
   name        String
   description String?
   orderIndex  Int       @default(0)
-  backBase    CardFace? @relation("LocationBackBase", fields: [backBaseId], references: [id], onDelete: SetNull)
-  backBaseId  String?   @unique
   panorama    CardFace? @relation("LocationPanorama", fields: [panoramaId], references: [id], onDelete: SetNull)
   panoramaId  String?   @unique
   cards       Card[]
@@ -98,7 +96,6 @@ model CardFace {
   images          GeneratedImage[]
   frontOfCard     Card?            @relation("CardFront")
   backOfCards     Card[]           @relation("CardBack")
-  backBaseOfLocation Location?     @relation("LocationBackBase")
   panoramaOfLocation Location?     @relation("LocationPanorama")
   sharedBackOfSet CardSet?         @relation("SetSharedBacks", fields: [sharedBackSetId], references: [id], onDelete: Cascade)
   sharedBackSetId String?

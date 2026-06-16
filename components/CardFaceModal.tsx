@@ -2,8 +2,8 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { setInPanorama, updateLocationCard } from "@/actions/locations";
-import { backAlterPrompt } from "@/lib/locations";
+import { setFaceLabelOverlay, setInPanorama, updateLocationCard } from "@/actions/locations";
+import { createCustomBack, duplicateAsCustomBack, switchCardBack } from "@/actions/backs";
 import { overlayLabelFor } from "@/lib/overlay";
 import { FaceForm } from "./FaceForm";
 import type { Card, CardSet, FaceWithImages } from "@/lib/types";
@@ -16,15 +16,15 @@ type CardWithFaces = Card & { front: FaceWithImages; back: FaceWithImages | null
 export function CardFaceModal({
   set,
   card,
-  backBase,
+  sharedBacks,
   widthMm,
   heightMm,
   onClose,
 }: {
   set: CardSet;
   card: CardWithFaces;
-  /** The location's generic back base, used as a reference for non-panorama backs. */
-  backBase: FaceWithImages | null;
+  /** The set's pack-level shared backs, selectable as a non-panorama card's back. */
+  sharedBacks: FaceWithImages[];
   widthMm: number;
   heightMm: number;
   onClose: () => void;
@@ -51,7 +51,23 @@ export function CardFaceModal({
     };
   }, [onClose]);
 
-  const overlayLabel = overlayLabelFor(card, card.back);
+  // Effective back: explicit per-card face, else the set's default shared back.
+  const effectiveBack =
+    card.back ?? sharedBacks.find((b) => b.id === set.defaultBackId) ?? null;
+  const backIsCustom = card.back != null && card.back.sharedBackSetId === null;
+  const backIsShared = effectiveBack != null && effectiveBack.sharedBackSetId !== null;
+  const usingDefault = card.backFaceId === null;
+  const overlayLabel = overlayLabelFor(card, effectiveBack);
+
+  function chooseBack(value: string) {
+    run(async () => {
+      if (value === "__default") await switchCardBack(card.id, null);
+      else if (value === "__custom") {
+        if (effectiveBack) await duplicateAsCustomBack(card.id, effectiveBack.id);
+        else await createCustomBack(card.id);
+      } else await switchCardBack(card.id, value);
+    });
+  }
 
   return (
     <div
@@ -166,8 +182,54 @@ export function CardFaceModal({
           <p className="text-xs text-zinc-400">
             {tab === "front"
               ? "The artwork on the front. “Title” is drawn onto the image; “Save” stores the text/prompt, the buttons regenerate the picture."
-              : "The artwork on the back. The position letter is overlaid automatically — no need to bake it in."}
+              : "The artwork on the back. Turn on the label overlay to draw the position letter / back text over it — no need to bake it in."}
           </p>
+
+          {/* Non-panorama: pick the back from the pack's shared backs (or a custom copy). */}
+          {tab === "back" && !card.inPanorama && (
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <span className="text-xs font-medium text-zinc-500">Back source:</span>
+              <select
+                className={inputCls}
+                value={usingDefault ? "__default" : backIsCustom ? "__custom" : card.backFaceId ?? "__default"}
+                onChange={(e) => chooseBack(e.target.value)}
+              >
+                <option value="__default">Set default back</option>
+                {sharedBacks.map((b) => {
+                  const base = b.basedOnFaceId ? sharedBacks.find((s) => s.id === b.basedOnFaceId) : null;
+                  const label = b.variantLabel
+                    ? `${base?.title ?? b.title ?? "Back"} – ${b.variantLabel}`
+                    : b.title ?? b.id.slice(0, 6);
+                  return (
+                    <option key={b.id} value={b.id}>
+                      Shared: {label}
+                    </option>
+                  );
+                })}
+                <option value="__custom">
+                  {backIsCustom ? "Custom back (this card only)" : "Customize for this card…"}
+                </option>
+              </select>
+            </div>
+          )}
+
+          {/* Overlay toggle — only for an editable own face (custom back or panorama slice). */}
+          {tab === "back" && card.back && card.back.sharedBackSetId === null && (
+            <label className="flex items-center gap-2 rounded-md bg-zinc-50 px-3 py-2 text-sm dark:bg-zinc-900">
+              <input
+                type="checkbox"
+                checked={!!card.back.labelOverlay}
+                onChange={(e) => run(() => setFaceLabelOverlay(card.back!.id, e.target.checked))}
+                className="h-4 w-4"
+              />
+              <span>
+                Show label overlay
+                <span className="ml-1 text-xs text-zinc-400">
+                  (draws “{card.backText?.trim() || card.positionLabel || "?"}” over the image — preview &amp; PDF)
+                </span>
+              </span>
+            </label>
+          )}
 
           {tab === "front" ? (
             <FaceForm
@@ -175,7 +237,7 @@ export function CardFaceModal({
               face={card.front}
               widthMm={widthMm}
               heightMm={heightMm}
-              backReferenceImageId={card.back?.activeImageId ?? null}
+              backReferenceImageId={effectiveBack?.activeImageId ?? null}
               saveLabel="Save text & prompt"
             />
           ) : card.inPanorama ? (
@@ -194,20 +256,27 @@ export function CardFaceModal({
                 position letter is then drawn as an overlay automatically (no extra generation).
               </p>
             )
-          ) : card.back ? (
+          ) : effectiveBack ? (
             <FaceForm
-              key={`back-${card.back.id}`}
-              face={card.back}
+              key={`back-${effectiveBack.id}`}
+              face={effectiveBack}
               widthMm={widthMm}
               heightMm={heightMm}
-              defaultReferenceImageId={backBase?.activeImageId ?? null}
-              defaultAlterPrompt={backAlterPrompt(card)}
+              readOnly={!backIsCustom}
+              readOnlyNote={
+                backIsShared
+                  ? usingDefault
+                    ? "The set's default back, shared by other cards. Edit it on the set page, or choose “Customize for this card”."
+                    : "A shared back used by other cards. Edit it on the set page, or choose “Customize for this card”."
+                  : undefined
+              }
+              overlayLabel={backIsCustom ? overlayLabel : null}
               saveLabel="Save text & prompt"
             />
           ) : (
             <p className="text-sm text-zinc-400">
-              No back yet — create the generic back base on the location page; new cards then get a
-              numbered copy.
+              No back yet — pick a shared back above, “Customize for this card”, or add a shared back on the
+              set page.
             </p>
           )}
         </div>

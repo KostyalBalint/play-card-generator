@@ -35,7 +35,7 @@ export async function updateLocationMeta(locationId: string, formData: FormData)
 
 export async function deleteLocation(locationId: string) {
   const loc = await prisma.location.findUniqueOrThrow({ where: { id: locationId } });
-  const baseIds = [loc.backBaseId, loc.panoramaId].filter((x): x is string => !!x);
+  const baseIds = [loc.panoramaId].filter((x): x is string => !!x);
   await prisma.$transaction([
     // Keep the cards as standalone; they retain their own front + back faces.
     prisma.card.updateMany({ where: { locationId }, data: { locationId: null, inPanorama: false } }),
@@ -44,13 +44,6 @@ export async function deleteLocation(locationId: string) {
   ]);
   revalidatePath(`/sets/${loc.setId}`);
   redirect(`/sets/${loc.setId}`);
-}
-
-export async function createLocationBackBase(locationId: string) {
-  const loc = await prisma.location.findUniqueOrThrow({ where: { id: locationId } });
-  const face = await prisma.cardFace.create({ data: { textLayout: "NONE" } });
-  await prisma.location.update({ where: { id: locationId }, data: { backBaseId: face.id } });
-  revalidatePath(`/sets/${loc.setId}/locations/${locationId}`);
 }
 
 export async function createLocationPanorama(locationId: string) {
@@ -64,12 +57,14 @@ export async function createCardInLocation(locationId: string, formData: FormDat
   const name = String(formData.get("name") ?? "").trim() || "New card";
   const loc = await prisma.location.findUniqueOrThrow({
     where: { id: locationId },
-    include: { backBase: true, cards: true },
+    include: { cards: true },
   });
   const label = labelForIndex(loc.cards.length);
   const maxOrder = await prisma.card.aggregate({ where: { setId: loc.setId }, _max: { orderIndex: true } });
 
-  const card = await prisma.card.create({
+  // No back is created here: the card falls back to the set's default shared back
+  // until one is chosen in the card editor (or it becomes a panorama member).
+  await prisma.card.create({
     data: {
       set: { connect: { id: loc.setId } },
       location: { connect: { id: locationId } },
@@ -79,20 +74,6 @@ export async function createCardInLocation(locationId: string, formData: FormDat
       front: { create: { textLayout: "TITLE_BANNER", title: name } },
     },
   });
-
-  // Generic numbered back = a per-card variant of the location's back base.
-  if (loc.backBase) {
-    const back = await prisma.cardFace.create({
-      data: {
-        basedOnFaceId: loc.backBase.id,
-        variantLabel: label,
-        title: label,
-        textLayout: loc.backBase.textLayout,
-        imagePrompt: loc.backBase.imagePrompt,
-      },
-    });
-    await prisma.card.update({ where: { id: card.id }, data: { backFaceId: back.id } });
-  }
   revalidatePath(`/sets/${loc.setId}/locations/${locationId}`);
 }
 
@@ -112,42 +93,26 @@ export async function updateLocationCard(cardId: string, formData: FormData) {
       number: numberRaw === null ? undefined : numberRaw === "" ? null : Number(numberRaw),
     },
   });
-  // Keep the generic back variant's text in sync (does NOT regenerate the image).
-  if (card.backFaceId) {
-    await prisma.cardFace.updateMany({
-      where: { id: card.backFaceId, basedOnFaceId: { not: null } },
-      data: { variantLabel: positionLabel, title: backText ?? positionLabel },
-    });
-  }
   if (card.locationId) revalidatePath(`/sets/${card.setId}/locations/${card.locationId}`);
+}
+
+/** Toggle whether a back face draws its card's label as a rendered overlay (vs baked). */
+export async function setFaceLabelOverlay(faceId: string, value: boolean) {
+  await prisma.cardFace.update({ where: { id: faceId }, data: { labelOverlay: value } });
+  const card = await prisma.card.findFirst({ where: { backFaceId: faceId } });
+  if (card?.locationId) revalidatePath(`/sets/${card.setId}/locations/${card.locationId}`);
 }
 
 /** Toggle a card in/out of the location's panorama (its back becomes a slice / generic back). */
 export async function setInPanorama(cardId: string, value: boolean) {
-  const card = await prisma.card.findUniqueOrThrow({
-    where: { id: cardId },
-    include: { location: { include: { backBase: true } } },
-  });
+  const card = await prisma.card.findUniqueOrThrow({ where: { id: cardId } });
   const oldBackId = card.backFaceId;
 
-  let newBackId: string | null = null;
-  if (!value && card.location?.backBase) {
-    // Leaving the panorama → recreate a generic numbered back variant.
-    const back = await prisma.cardFace.create({
-      data: {
-        basedOnFaceId: card.location.backBase.id,
-        variantLabel: card.positionLabel,
-        title: card.backText ?? card.positionLabel,
-        textLayout: card.location.backBase.textLayout,
-        imagePrompt: card.location.backBase.imagePrompt,
-      },
-    });
-    newBackId = back.id;
-  }
-  // Repoint first, then clean up the old per-card back face.
+  // Leaving the panorama → drop the slice back; the card falls back to the set
+  // default back until one is chosen. Joining → the slice is filled by splitPanorama.
   await prisma.card.update({
     where: { id: cardId },
-    data: { inPanorama: value, backFaceId: newBackId },
+    data: { inPanorama: value, backFaceId: null },
   });
   if (oldBackId) {
     await prisma.cardFace.deleteMany({ where: { id: oldBackId, ...ORPHAN } });
@@ -229,17 +194,10 @@ export async function splitPanorama(locationId: string) {
 export async function reorderLocation(locationId: string, orderedCardIds: string[]) {
   const loc = await prisma.location.findUniqueOrThrow({ where: { id: locationId } });
   await prisma.$transaction(
-    orderedCardIds.flatMap((cardId, i) => {
-      const label = labelForIndex(i);
-      return [
-        prisma.card.update({ where: { id: cardId }, data: { positionLabel: label, orderIndex: i } }),
-        // Sync generic back variant text (image still needs re-alter to show it).
-        prisma.cardFace.updateMany({
-          where: { backOfCards: { some: { id: cardId } }, basedOnFaceId: { not: null } },
-          data: { variantLabel: label, title: label },
-        }),
-      ];
-    }),
+    orderedCardIds.map((cardId, i) =>
+      // Labels are rendered live (panorama overlay reads positionLabel) → no image work here.
+      prisma.card.update({ where: { id: cardId }, data: { positionLabel: labelForIndex(i), orderIndex: i } }),
+    ),
   );
   revalidatePath(`/sets/${loc.setId}/locations/${locationId}`);
 }

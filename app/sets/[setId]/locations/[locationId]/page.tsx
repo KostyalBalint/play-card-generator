@@ -17,8 +17,7 @@ export default async function LocationPage({
   const location = await prisma.location.findUnique({
     where: { id: locationId },
     include: {
-      set: true,
-      backBase: { include: faceInclude },
+      set: { include: { sharedBacks: { include: faceInclude } } },
       panorama: { include: faceInclude },
       cards: {
         orderBy: { orderIndex: "asc" },
@@ -38,7 +37,13 @@ export default async function LocationPage({
         </Link>
         <h1 className="text-2xl font-bold">{location.name}</h1>
       </div>
-      <LocationEditor set={location.set} location={location} widthMm={widthMm} heightMm={heightMm} />
+      <LocationEditor
+        set={location.set}
+        sharedBacks={location.set.sharedBacks}
+        location={location}
+        widthMm={widthMm}
+        heightMm={heightMm}
+      />
     </main>
   );
 }
