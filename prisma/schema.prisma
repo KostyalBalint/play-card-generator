@@ -66,6 +66,9 @@ model Card {
   positionLabel String?
   backText      String?
   inPanorama    Boolean   @default(false)
+  // Item cards: grouped in the set's flat Items section; their number is drawn
+  // as a rendered overlay over the set's default shared back (see lib/overlay).
+  isItem        Boolean   @default(false)
   name          String
   number        Int?
   orderIndex    Int       @default(0)

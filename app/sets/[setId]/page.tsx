@@ -7,6 +7,7 @@ import { deleteSet } from "@/actions/sets";
 import { SetSettingsForm } from "@/components/SetSettingsForm";
 import { BackDesignManager } from "@/components/BackDesignManager";
 import { LocationManager } from "@/components/LocationManager";
+import { ItemManager } from "@/components/ItemManager";
 import { CardFacePreview } from "@/components/CardFacePreview";
 
 export const dynamic = "force-dynamic";
@@ -24,7 +25,8 @@ export default async function SetPage({ params }: { params: Promise<{ setId: str
   if (!set) notFound();
 
   const { widthMm, heightMm } = sizeForSet(set);
-  const looseCards = set.cards.filter((c) => c.locationId === null);
+  const items = set.cards.filter((c) => c.isItem);
+  const looseCards = set.cards.filter((c) => c.locationId === null && !c.isItem);
 
   return (
     <main className="mx-auto max-w-5xl space-y-8 p-8">
@@ -62,6 +64,15 @@ export default async function SetPage({ params }: { params: Promise<{ setId: str
           optional panorama spanning the members&apos; backs.
         </p>
         <LocationManager setId={set.id} locations={set.locations} />
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="font-semibold">Items</h2>
+        <p className="text-xs text-zinc-400">
+          A flat group of cards numbered on the back. Each item&apos;s front is built like any card; its
+          back is the set&apos;s default shared back with the item number drawn over it.
+        </p>
+        <ItemManager setId={set.id} items={items} widthMm={widthMm} heightMm={heightMm} />
       </section>
 
       <section className="space-y-3">

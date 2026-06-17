@@ -25,14 +25,17 @@ export async function exportSetPdf(setId: string): Promise<Uint8Array> {
   const { widthMm, heightMm } = sizeForSet(set);
   const grid = computeGrid(widthMm, heightMm);
 
-  // Group located cards together (by location order, then card order); loose cards after.
+  // Group contiguously by tier: located cards (by location/card order), then
+  // items (by number), then loose cards.
+  const tier = (c: (typeof set.cards)[number]) => (c.location ? 0 : c.isItem ? 1 : 2);
   const ordered = [...set.cards].sort((a, b) => {
-    if (a.location && b.location) {
-      if (a.location.orderIndex !== b.location.orderIndex) return a.location.orderIndex - b.location.orderIndex;
-      return a.orderIndex - b.orderIndex;
+    const ta = tier(a);
+    const tb = tier(b);
+    if (ta !== tb) return ta - tb;
+    if (ta === 0 && a.location && b.location && a.location.orderIndex !== b.location.orderIndex) {
+      return a.location.orderIndex - b.location.orderIndex;
     }
-    if (a.location) return -1;
-    if (b.location) return 1;
+    if (ta === 1) return (a.number ?? 0) - (b.number ?? 0) || a.orderIndex - b.orderIndex;
     return a.orderIndex - b.orderIndex;
   });
 
@@ -42,12 +45,21 @@ export async function exportSetPdf(setId: string): Promise<Uint8Array> {
     backFaceId: string | null;
     name: string;
     backLabel: string | null;
+    isItem: boolean;
+    number: number | null;
   }[] = [];
   for (const card of ordered) {
     const backFaceId = resolveBackFaceId(card, set);
     const backLabel = buildBackText(card) || null;
     for (let c = 0; c < card.copies; c++) {
-      slots.push({ frontFaceId: card.frontFaceId, backFaceId, name: card.name, backLabel });
+      slots.push({
+        frontFaceId: card.frontFaceId,
+        backFaceId,
+        name: card.name,
+        backLabel,
+        isItem: card.isItem,
+        number: card.number,
+      });
     }
   }
 
@@ -99,8 +111,15 @@ export async function exportSetPdf(setId: string): Promise<Uint8Array> {
       const sprite: FaceSprite = slot.backFaceId
         ? sprites.get(slot.backFaceId)!
         : { kind: "placeholder", label: "card back" };
-      const overlay =
-        slot.backFaceId && overlayFaces.has(slot.backFaceId) ? slot.backLabel : null;
+      // Items draw their number over the (shared) default back; panorama members
+      // draw their label only when the back face is flagged labelOverlay.
+      const overlay = slot.isItem
+        ? slot.number != null
+          ? String(slot.number)
+          : null
+        : slot.backFaceId && overlayFaces.has(slot.backFaceId)
+          ? slot.backLabel
+          : null;
       drawFace(backPage, sprite, grid.backSlots[idx], grid, font, slot.name, overlay);
     });
     drawCutMarks(backPage, chunk.length, grid.backSlots, grid);

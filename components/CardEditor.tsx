@@ -61,9 +61,9 @@ export function CardEditor({
             Name
             <input name="name" defaultValue={card.name} className={`${inputCls} mt-1 block w-48`} />
           </label>
-          {set.showNumbers && (
+          {(set.showNumbers || card.isItem) && (
             <label className="text-xs font-medium text-zinc-500">
-              Number
+              {card.isItem ? "Item number (on back)" : "Number"}
               <input
                 name="number"
                 type="number"
@@ -111,6 +111,25 @@ export function CardEditor({
               onDraftChange={setFrontDraft}
               backReferenceImageId={back?.activeImageId ?? null}
             />
+          ) : card.isItem ? (
+            // Items always use the set's default shared back; the item number is
+            // drawn over it as a rendered overlay (not baked, not editable here).
+            back ? (
+              <FaceForm
+                key={back.id}
+                face={back}
+                widthMm={widthMm}
+                heightMm={heightMm}
+                readOnly
+                readOnlyNote="Items share the set's default back. The item number is drawn over it automatically — set it in the “Item number” field above, or change the default back on the set page."
+                overlayLabel={card.number != null ? String(card.number) : null}
+              />
+            ) : (
+              <p className="text-sm text-zinc-400">
+                The set has no default back yet — add one on the set page and it becomes this item&apos;s
+                back, with the item number overlaid.
+              </p>
+            )
           ) : (
             <div className="space-y-4">
               <div className="flex flex-wrap items-center gap-2 text-sm">

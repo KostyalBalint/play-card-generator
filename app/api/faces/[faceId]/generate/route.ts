@@ -33,7 +33,9 @@ async function faceContext(faceId: string) {
     face.backOfCards[0]?.set ??
     face.panoramaOfLocation?.set ??
     null;
-  const cardNumber = set?.showNumbers ? face.frontOfCard?.number ?? null : null;
+  // Item numbers live only on the back overlay — never bake them onto the front.
+  const cardNumber =
+    set?.showNumbers && !face.frontOfCard?.isItem ? face.frontOfCard?.number ?? null : null;
   // Panorama faces are generated wide: one image spanning N member cards side-by-side.
   const panoramaSpan = face.panoramaOfLocation ? Math.max(1, face.panoramaOfLocation.cards.length) : 0;
   return { face, set, cardNumber, panoramaSpan };
