@@ -78,20 +78,38 @@ export async function createCardInLocation(locationId: string, formData: FormDat
 }
 
 export async function updateLocationCard(cardId: string, formData: FormData) {
-  const positionLabel = String(formData.get("positionLabel") ?? "").trim() || null;
-  const backText = String(formData.get("backText") ?? "").trim() || null;
+  // Fields absent from the submitted form are left untouched — the modal posts
+  // several partial forms (card details, overlay caption, …) for the same card.
+  const text = (key: string) => {
+    const raw = formData.get(key);
+    return raw === null ? undefined : String(raw).trim() || null;
+  };
   const copiesRaw = formData.get("copies");
   const numberRaw = formData.get("number");
   const card = await prisma.card.update({
     where: { id: cardId },
     data: {
-      name: String(formData.get("name") ?? ""),
-      positionLabel,
-      backText,
+      name: formData.get("name") === null ? undefined : String(formData.get("name")),
+      positionLabel: text("positionLabel"),
+      backText: text("backText"),
+      overlayCaption: text("overlayCaption"),
       copies: copiesRaw === null ? undefined : Math.max(1, Number(copiesRaw) || 1),
       // hidden when numbering is off → leave untouched
       number: numberRaw === null ? undefined : numberRaw === "" ? null : Number(numberRaw),
     },
+  });
+  if (card.locationId) revalidatePath(`/sets/${card.setId}/locations/${card.locationId}`);
+}
+
+/**
+ * Toggle the card-driven back overlay (position letter + caption). Unlike
+ * setFaceLabelOverlay this works with any back, including the set's shared
+ * default — the establishing card A usually has no back face of its own.
+ */
+export async function setCardLabelOverlay(cardId: string, value: boolean) {
+  const card = await prisma.card.update({
+    where: { id: cardId },
+    data: { labelOverlay: value },
   });
   if (card.locationId) revalidatePath(`/sets/${card.setId}/locations/${card.locationId}`);
 }

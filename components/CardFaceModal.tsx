@@ -2,9 +2,14 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { setFaceLabelOverlay, setInPanorama, updateLocationCard } from "@/actions/locations";
+import {
+  setCardLabelOverlay,
+  setFaceLabelOverlay,
+  setInPanorama,
+  updateLocationCard,
+} from "@/actions/locations";
 import { createCustomBack, duplicateAsCustomBack, switchCardBack } from "@/actions/backs";
-import { overlayLabelFor } from "@/lib/overlay";
+import { overlayFor } from "@/lib/overlay";
 import { FaceForm } from "./FaceForm";
 import type { Card, CardSet, FaceWithImages } from "@/lib/types";
 
@@ -17,6 +22,7 @@ export function CardFaceModal({
   set,
   card,
   sharedBacks,
+  locationName,
   widthMm,
   heightMm,
   onClose,
@@ -25,6 +31,8 @@ export function CardFaceModal({
   card: CardWithFaces;
   /** The set's pack-level shared backs, selectable as a non-panorama card's back. */
   sharedBacks: FaceWithImages[];
+  /** Default caption for the card's back overlay. */
+  locationName: string;
   widthMm: number;
   heightMm: number;
   onClose: () => void;
@@ -57,7 +65,7 @@ export function CardFaceModal({
   const backIsCustom = card.back != null && card.back.sharedBackSetId === null;
   const backIsShared = effectiveBack != null && effectiveBack.sharedBackSetId !== null;
   const usingDefault = card.backFaceId === null;
-  const overlayLabel = overlayLabelFor(card, effectiveBack);
+  const overlay = overlayFor(card, effectiveBack, locationName);
 
   function chooseBack(value: string) {
     run(async () => {
@@ -213,7 +221,49 @@ export function CardFaceModal({
             </div>
           )}
 
-          {/* Overlay toggle — only for an editable own face (custom back or panorama slice). */}
+          {/* Card-driven overlay — works with any back, incl. the set's shared default.
+              Meant for the establishing card (A), which sits outside the panorama. */}
+          {tab === "back" && !card.inPanorama && (
+            <div className="space-y-2 rounded-md bg-zinc-50 px-3 py-2 text-sm dark:bg-zinc-900">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={card.labelOverlay}
+                  onChange={(e) => run(() => setCardLabelOverlay(card.id, e.target.checked))}
+                  className="h-4 w-4"
+                />
+                <span>
+                  Draw text over the back
+                  <span className="ml-1 text-xs text-zinc-400">
+                    (“{card.backText?.trim() || card.positionLabel || "?"}” +{" "}
+                    “{card.overlayCaption?.trim() || locationName}” — rendered text, no image
+                    generation)
+                  </span>
+                </span>
+              </label>
+              {card.labelOverlay && (
+                <form
+                  action={(fd) => run(() => updateLocationCard(card.id, fd))}
+                  className="flex items-end gap-2"
+                >
+                  <label className="text-xs font-medium text-zinc-500">
+                    <span className="block">Caption</span>
+                    <input
+                      name="overlayCaption"
+                      defaultValue={card.overlayCaption ?? ""}
+                      placeholder={locationName}
+                      className={`${inputCls} block w-64`}
+                    />
+                  </label>
+                  <button className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800">
+                    Save caption
+                  </button>
+                </form>
+              )}
+            </div>
+          )}
+
+          {/* Face-driven overlay — only for an editable own face (custom back or panorama slice). */}
           {tab === "back" && card.back && card.back.sharedBackSetId === null && (
             <label className="flex items-center gap-2 rounded-md bg-zinc-50 px-3 py-2 text-sm dark:bg-zinc-900">
               <input
@@ -225,7 +275,8 @@ export function CardFaceModal({
               <span>
                 Show label overlay
                 <span className="ml-1 text-xs text-zinc-400">
-                  (draws “{card.backText?.trim() || card.positionLabel || "?"}” over the image — preview &amp; PDF)
+                  (draws “{card.backText?.trim() || card.positionLabel || "?"}” along the bottom of the
+                  image — preview &amp; PDF)
                 </span>
               </span>
             </label>
@@ -247,7 +298,7 @@ export function CardFaceModal({
                 face={card.back}
                 widthMm={widthMm}
                 heightMm={heightMm}
-                overlayLabel={overlayLabel}
+                overlay={overlay}
                 saveLabel="Save text & prompt"
               />
             ) : (
@@ -270,7 +321,7 @@ export function CardFaceModal({
                     : "A shared back used by other cards. Edit it on the set page, or choose “Customize for this card”."
                   : undefined
               }
-              overlayLabel={backIsCustom ? overlayLabel : null}
+              overlay={overlay}
               saveLabel="Save text & prompt"
             />
           ) : (

@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { FaceOverlayLabel } from "./CardFacePreview";
+import type { FaceOverlay } from "@/lib/overlay";
 
 const MIN_SCALE = 1;
 const MAX_SCALE = 8;
@@ -8,10 +10,17 @@ const MAX_SCALE = 8;
 export function ImageLightbox({
   src,
   alt,
+  widthMm,
+  heightMm,
+  overlay = null,
   onClose,
 }: {
   src: string;
   alt: string;
+  /** Card size — the master is cover-cropped to this aspect, exactly as PDF export does. */
+  widthMm: number;
+  heightMm: number;
+  overlay?: FaceOverlay | null;
   onClose: () => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -99,17 +108,25 @@ export function ImageLightbox({
         t.scale > 1 ? "cursor-grab" : "cursor-zoom-in"
       }`}
     >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={src}
-        alt={alt}
-        draggable={false}
-        className="max-h-[92vh] max-w-[92vw] select-none rounded-lg shadow-2xl"
+      {/* Print-accurate card: cover-crop to the card aspect + rendered overlay */}
+      <div
+        className="relative select-none overflow-hidden shadow-2xl [container-type:inline-size]"
         style={{
+          width: `min(92vw, ${((92 * widthMm) / heightMm).toFixed(3)}vh)`,
+          aspectRatio: `${widthMm} / ${heightMm}`,
           transform: `translate(${t.x}px, ${t.y}px) scale(${t.scale})`,
           transition: dragging ? "none" : "transform 120ms ease-out",
         }}
-      />
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={src}
+          alt={alt}
+          draggable={false}
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+        {overlay ? <FaceOverlayLabel overlay={overlay} widthMm={widthMm} heightMm={heightMm} /> : null}
+      </div>
       <button
         onClick={onClose}
         className="absolute right-4 top-4 rounded-full bg-white/10 px-3 py-1.5 text-sm text-white hover:bg-white/20"

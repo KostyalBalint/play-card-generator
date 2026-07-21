@@ -5,6 +5,7 @@ import { coverCrop } from "@/lib/imagecrop";
 import { sizeForSet } from "@/lib/sizes";
 import { resolveBackFaceId } from "@/lib/faces";
 import { buildBackText } from "@/lib/locations";
+import { overlayFor, type FaceOverlay } from "@/lib/overlay";
 import { A4, computeGrid, Grid, mmToPt, Slot } from "./grid";
 
 type FaceSprite =
@@ -45,18 +46,25 @@ export async function exportSetPdf(setId: string): Promise<Uint8Array> {
     backFaceId: string | null;
     name: string;
     backLabel: string | null;
+    /** Card-driven overlay (letter + caption), independent of the back face. */
+    cardOverlay: FaceOverlay | null;
     isItem: boolean;
     number: number | null;
   }[] = [];
   for (const card of ordered) {
     const backFaceId = resolveBackFaceId(card, set);
     const backLabel = buildBackText(card) || null;
+    // labelOverlay on the card itself → drawn over whatever back it uses.
+    const cardOverlay = card.labelOverlay
+      ? overlayFor(card, null, card.location?.name ?? null)
+      : null;
     for (let c = 0; c < card.copies; c++) {
       slots.push({
         frontFaceId: card.frontFaceId,
         backFaceId,
         name: card.name,
         backLabel,
+        cardOverlay,
         isItem: card.isItem,
         number: card.number,
       });
@@ -111,15 +119,18 @@ export async function exportSetPdf(setId: string): Promise<Uint8Array> {
       const sprite: FaceSprite = slot.backFaceId
         ? sprites.get(slot.backFaceId)!
         : { kind: "placeholder", label: "card back" };
-      // Items draw their number over the (shared) default back; panorama members
-      // draw their label only when the back face is flagged labelOverlay.
-      const overlay = slot.isItem
+      // Items draw their number centred over the (shared) default back; cards
+      // flagged labelOverlay draw their letter + caption over any back; panorama
+      // members draw their letter in the small bottom caption, and only when the
+      // back face is flagged labelOverlay. Mirrors overlayFor in lib/overlay.
+      const overlay: FaceOverlay | null = slot.isItem
         ? slot.number != null
-          ? String(slot.number)
+          ? { label: String(slot.number), caption: null }
           : null
-        : slot.backFaceId && overlayFaces.has(slot.backFaceId)
-          ? slot.backLabel
-          : null;
+        : slot.cardOverlay ??
+          (slot.backFaceId && overlayFaces.has(slot.backFaceId) && slot.backLabel
+            ? { label: null, caption: slot.backLabel }
+            : null);
       drawFace(backPage, sprite, grid.backSlots[idx], grid, font, slot.name, overlay);
     });
     drawCutMarks(backPage, chunk.length, grid.backSlots, grid);
@@ -135,7 +146,7 @@ function drawFace(
   grid: Grid,
   font: Awaited<ReturnType<PDFDocument["embedFont"]>>,
   name: string,
-  overlayLabel: string | null = null,
+  overlay: FaceOverlay | null = null,
 ) {
   const x = mmToPt(slot.xMm);
   // pdf-lib origin is bottom-left; slot coords are top-left mm
@@ -145,7 +156,7 @@ function drawFace(
 
   if (sprite.kind === "image") {
     page.drawImage(sprite.image, { x, y, width: w, height: h });
-    if (overlayLabel) drawOverlayLabel(page, overlayLabel, x, y, w, h, font);
+    if (overlay) drawOverlay(page, overlay, x, y, w, h, font);
   } else {
     page.drawRectangle({
       x,
@@ -169,10 +180,14 @@ function drawFace(
   }
 }
 
-/** Rendered position label drawn over a back image (top-left corner plate). */
-function drawOverlayLabel(
+/**
+ * Rendered label (+ optional caption) drawn over a back image: the label dead
+ * centre, the caption bottom-centred one inset up. Geometry is mirrored by
+ * FaceOverlayLabel in components/CardFacePreview so the preview matches print.
+ */
+function drawOverlay(
   page: PDFPage,
-  text: string,
+  overlay: FaceOverlay,
   x: number,
   y: number,
   w: number,
@@ -180,31 +195,63 @@ function drawOverlayLabel(
   font: Awaited<ReturnType<PDFDocument["embedFont"]>>,
 ) {
   const size = h * 0.1;
+  const inset = w * 0.05;
+  const centerX = x + w / 2;
+  if (overlay.label) {
+    plate(page, overlay.label, size, centerX, y + h / 2 - plateHeight(size) / 2, font);
+  }
+  if (overlay.caption) {
+    plate(page, overlay.caption, size * 0.45, centerX, y + inset, font);
+  }
+}
+
+/** Plate height for a given font size — padY is 0.25em top and bottom. */
+function plateHeight(size: number): number {
+  return size * 1.5;
+}
+
+/** One dark text plate, horizontally centred on `centerX`, bottom edge at `bottom`. */
+function plate(
+  page: PDFPage,
+  text: string,
+  size: number,
+  centerX: number,
+  bottom: number,
+  font: Awaited<ReturnType<PDFDocument["embedFont"]>>,
+) {
   const padX = size * 0.4;
   const padY = size * 0.25;
-  const inset = w * 0.05;
   const textW = font.widthOfTextAtSize(text, size);
   const plateW = textW + 2 * padX;
-  const plateH = size + 2 * padY;
-  // top-left corner (pdf origin bottom-left → top is y + h)
-  const plateX = x + inset;
-  const plateY = y + h - inset - plateH;
-  page.drawRectangle({
-    x: plateX,
-    y: plateY,
-    width: plateW,
-    height: plateH,
+  const plateH = plateHeight(size);
+  const left = centerX - plateW / 2;
+  // pdf-lib's drawRectangle has no border radius → draw the plate as a path.
+  page.drawSvgPath(roundedRectPath(plateW, plateH, size * 0.3), {
+    x: left,
+    // drawSvgPath places the path's origin here and grows downward (SVG y-axis).
+    y: bottom + plateH,
     color: rgb(0, 0, 0),
     opacity: 0.55,
-    // pdf-lib has no border radius; a thin dark plate reads fine at print size.
+    borderWidth: 0,
   });
-  page.drawText(text, {
-    x: plateX + padX,
-    y: plateY + padY,
-    size,
-    font,
-    color: rgb(1, 1, 1),
-  });
+  page.drawText(text, { x: left + padX, y: bottom + padY, size, font, color: rgb(1, 1, 1) });
+}
+
+/** Rounded-rect SVG path, origin top-left. Quadratic corners — flip-safe. */
+function roundedRectPath(w: number, h: number, r: number): string {
+  const rad = Math.min(r, w / 2, h / 2);
+  return [
+    `M ${rad} 0`,
+    `L ${w - rad} 0`,
+    `Q ${w} 0 ${w} ${rad}`,
+    `L ${w} ${h - rad}`,
+    `Q ${w} ${h} ${w - rad} ${h}`,
+    `L ${rad} ${h}`,
+    `Q 0 ${h} 0 ${h - rad}`,
+    `L 0 ${rad}`,
+    `Q 0 0 ${rad} 0`,
+    "Z",
+  ].join(" ");
 }
 
 /** Tick marks extending outward from each card corner — never across card faces. */

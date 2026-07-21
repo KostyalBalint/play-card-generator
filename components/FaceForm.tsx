@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { updateFace, setActiveImage } from "@/actions/cards";
 import { CardFacePreview } from "./CardFacePreview";
 import { ImageLightbox } from "./ImageLightbox";
+import type { FaceOverlay } from "@/lib/overlay";
 import type { FaceDraft, FaceWithImages } from "@/lib/types";
 import { draftFromFace } from "@/lib/types";
 
@@ -23,7 +24,7 @@ export function FaceForm({
   defaultReferenceImageId = null,
   defaultAlterPrompt = "",
   backReferenceImageId = null,
-  overlayLabel = null,
+  overlay = null,
   saveLabel = "Save",
 }: {
   face: FaceWithImages;
@@ -38,8 +39,8 @@ export function FaceForm({
   defaultAlterPrompt?: string;
   /** Card's back active image — enables "match back side" on a front face's main Generate. */
   backReferenceImageId?: string | null;
-  /** Rendered (not baked) position label drawn over the preview. */
-  overlayLabel?: string | null;
+  /** Rendered (not baked) label + caption drawn over the preview — see lib/overlay. */
+  overlay?: FaceOverlay | null;
   /** Label for the plain (no-regen) save button. */
   saveLabel?: string;
 }) {
@@ -128,6 +129,9 @@ export function FaceForm({
         <ImageLightbox
           src={`/api/images/${face.activeImageId}`}
           alt={draft.title || "Card face"}
+          widthMm={widthMm}
+          heightMm={heightMm}
+          overlay={overlay}
           onClose={() => setLightboxOpen(false)}
         />
       )}
@@ -142,7 +146,7 @@ export function FaceForm({
             widthMm={widthMm}
             heightMm={heightMm}
             label={draft.title || "No image yet"}
-            overlayLabel={overlayLabel}
+            overlay={overlay}
           />
           {generating && (
             <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/40">

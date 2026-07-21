@@ -1,17 +1,65 @@
+import type { FaceOverlay } from "@/lib/overlay";
+
+/**
+ * Rendered (not baked) overlay drawn over a face image — see lib/overlay.
+ * Geometry mirrors drawOverlay in lib/pdf/export so screen matches print: the
+ * label sits dead centre, the caption is bottom-centred one inset up. Font =
+ * 10% of card height, caption = 45% of that, inset = 5% of card width, plate
+ * padding = 0.4/0.25em. Sizes in cqw, so the parent must be a
+ * `[container-type:inline-size]` box with the card's aspect ratio.
+ */
+export function FaceOverlayLabel({
+  overlay,
+  widthMm,
+  heightMm,
+}: {
+  overlay: FaceOverlay;
+  widthMm: number;
+  heightMm: number;
+}) {
+  const size = (10 * heightMm) / widthMm;
+  // rounded radius = 0.3em, matching roundedRectPath in lib/pdf/export
+  const plate = "rounded-[0.3em] bg-black/55 text-white";
+  return (
+    <div
+      className="pointer-events-none absolute inset-0"
+      style={{ fontSize: `${size}cqw` }}
+    >
+      {overlay.label ? (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className={plate} style={{ padding: "0.25em 0.4em" }}>
+            <span className="font-bold leading-none tracking-wide">{overlay.label}</span>
+          </div>
+        </div>
+      ) : null}
+      {overlay.caption ? (
+        <div
+          className="absolute left-1/2 flex -translate-x-1/2 justify-center"
+          style={{ bottom: "5cqw" }}
+        >
+          <div className={plate} style={{ padding: "0.25em 0.4em", fontSize: "0.45em" }}>
+            <span className="whitespace-nowrap font-medium leading-none">{overlay.caption}</span>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function CardFacePreview({
   activeImageId,
   widthMm,
   heightMm,
   label,
-  overlayLabel,
+  overlay,
   className = "",
 }: {
   activeImageId: string | null | undefined;
   widthMm: number;
   heightMm: number;
   label?: string;
-  /** Rendered (not baked) position label drawn over the image — see lib/overlay. */
-  overlayLabel?: string | null;
+  /** Rendered (not baked) label + caption drawn over the image — see lib/overlay. */
+  overlay?: FaceOverlay | null;
   className?: string;
 }) {
   return (
@@ -31,16 +79,7 @@ export function CardFacePreview({
           {label ?? "No image yet"}
         </div>
       )}
-      {overlayLabel ? (
-        <div className="pointer-events-none absolute left-[6%] top-[5%] flex items-center justify-center rounded-md bg-black/55 px-[0.5em] py-[0.15em] text-white shadow-sm backdrop-blur-[1px]">
-          <span
-            className="font-bold leading-none tracking-wide"
-            style={{ fontSize: "clamp(0.6rem, 9cqw, 2rem)" }}
-          >
-            {overlayLabel}
-          </span>
-        </div>
-      ) : null}
+      {overlay ? <FaceOverlayLabel overlay={overlay} widthMm={widthMm} heightMm={heightMm} /> : null}
     </div>
   );
 }

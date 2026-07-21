@@ -70,6 +70,12 @@ model Card {
   // Item cards: grouped in the set's flat Items section; their number is drawn
   // as a rendered overlay over the set's default shared back (see lib/overlay).
   isItem        Boolean   @default(false)
+  // Card-driven back overlay: draws the position letter + a caption (location
+  // name by default) over whatever back the card uses — including the set's
+  // shared default back. Used by establishing cards that sit outside the
+  // panorama. See lib/overlay.
+  labelOverlay  Boolean   @default(false)
+  overlayCaption String?
   name          String
   number        Int?
   orderIndex    Int       @default(0)

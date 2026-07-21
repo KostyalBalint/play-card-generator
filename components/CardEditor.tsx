@@ -122,7 +122,7 @@ export function CardEditor({
                 heightMm={heightMm}
                 readOnly
                 readOnlyNote="Items share the set's default back. The item number is drawn over it automatically — set it in the “Item number” field above, or change the default back on the set page."
-                overlayLabel={card.number != null ? String(card.number) : null}
+                overlay={card.number != null ? { label: String(card.number), caption: null } : null}
               />
             ) : (
               <p className="text-sm text-zinc-400">

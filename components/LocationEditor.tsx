@@ -10,7 +10,7 @@ import {
   splitPanorama,
   updateLocationMeta,
 } from "@/actions/locations";
-import { overlayLabelFor } from "@/lib/overlay";
+import { overlayFor } from "@/lib/overlay";
 import { FaceForm } from "./FaceForm";
 import { CardFacePreview } from "./CardFacePreview";
 import { CardFaceModal } from "./CardFaceModal";
@@ -56,6 +56,7 @@ export function LocationEditor({
   const run = (fn: () => Promise<unknown>) => startTransition(async () => { await fn(); refresh(); });
 
   const openCard = location.cards.find((c) => c.id === openCardId) ?? null;
+  const defaultBack = sharedBacks.find((b) => b.id === set.defaultBackId) ?? null;
 
   return (
     <div className="space-y-8">
@@ -126,6 +127,8 @@ export function LocationEditor({
             <CardTile
               key={card.id}
               card={card}
+              defaultBack={defaultBack}
+              locationName={location.name}
               index={i}
               total={location.cards.length}
               widthMm={widthMm}
@@ -164,6 +167,7 @@ export function LocationEditor({
           set={set}
           card={openCard}
           sharedBacks={sharedBacks}
+          locationName={location.name}
           widthMm={widthMm}
           heightMm={heightMm}
           onClose={() => setOpenCardId(null)}
@@ -182,6 +186,8 @@ const STATUS_DOT: Record<ReturnType<typeof faceState>, string> = {
 
 function CardTile({
   card,
+  defaultBack,
+  locationName,
   index,
   total,
   widthMm,
@@ -190,6 +196,8 @@ function CardTile({
   onMove,
 }: {
   card: CardWithFaces;
+  defaultBack: FaceWithImages | null;
+  locationName: string;
   index: number;
   total: number;
   widthMm: number;
@@ -197,9 +205,11 @@ function CardTile({
   onOpen: () => void;
   onMove: (dir: -1 | 1) => void;
 }) {
-  const overlayLabel = overlayLabelFor(card, card.back);
+  // Cards with no own back fall back to the set's default shared back.
+  const back = card.back ?? defaultBack;
+  const overlay = overlayFor(card, back, locationName);
   const frontState = faceState(card.front);
-  const backState = faceState(card.back);
+  const backState = faceState(back);
   const backIsMain = true;
 
   return (
@@ -210,11 +220,11 @@ function CardTile({
         title="Edit front & back"
       >
         <CardFacePreview
-          activeImageId={backIsMain ? card.back?.activeImageId : card.front.activeImageId}
+          activeImageId={backIsMain ? back?.activeImageId : card.front.activeImageId}
           widthMm={widthMm}
           heightMm={heightMm}
           label={backIsMain ? "back" : card.name}
-          overlayLabel={backIsMain ? overlayLabel : null}
+          overlay={backIsMain ? overlay : null}
           className="ring-1 ring-transparent group-hover:ring-blue-400"
         />
         <span className="absolute left-1.5 top-1.5 rounded bg-black/60 px-1.5 py-0.5 text-xs font-bold text-white">
@@ -223,11 +233,11 @@ function CardTile({
         {/* Other face inset, bottom-right */}
         <span className="absolute bottom-1.5 right-1.5 w-1/3 overflow-hidden rounded-md shadow ring-1 ring-black/20">
           <CardFacePreview
-            activeImageId={backIsMain ? card.front.activeImageId : card.back?.activeImageId}
+            activeImageId={backIsMain ? card.front.activeImageId : back?.activeImageId}
             widthMm={widthMm}
             heightMm={heightMm}
             label={backIsMain ? "front" : "back"}
-            overlayLabel={backIsMain ? null : overlayLabel}
+            overlay={backIsMain ? null : overlay}
           />
         </span>
         {card.inPanorama && (
