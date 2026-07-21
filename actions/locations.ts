@@ -209,6 +209,33 @@ export async function splitPanorama(locationId: string) {
   revalidatePath(`/sets/${loc.setId}/locations/${locationId}`);
 }
 
+/**
+ * Delete one card from a location and relabel the rest (B, C, … close the gap).
+ * Unlike deleteCard in actions/cards it stays on the location page.
+ */
+export async function deleteCardFromLocation(cardId: string) {
+  const card = await prisma.card.findUniqueOrThrow({ where: { id: cardId } });
+  const faceIds = [card.frontFaceId, card.backFaceId].filter((x): x is string => !!x);
+  await prisma.card.delete({ where: { id: cardId } });
+  // Front face (and any custom back) are now orphaned — shared backs are kept.
+  await prisma.cardFace.deleteMany({ where: { id: { in: faceIds }, ...ORPHAN } });
+
+  if (card.locationId) {
+    const rest = await prisma.card.findMany({
+      where: { locationId: card.locationId },
+      orderBy: { orderIndex: "asc" },
+      select: { id: true },
+    });
+    await prisma.$transaction(
+      rest.map((c, i) =>
+        prisma.card.update({ where: { id: c.id }, data: { positionLabel: labelForIndex(i), orderIndex: i } }),
+      ),
+    );
+    revalidatePath(`/sets/${card.setId}/locations/${card.locationId}`);
+  }
+  revalidatePath(`/sets/${card.setId}`);
+}
+
 export async function reorderLocation(locationId: string, orderedCardIds: string[]) {
   const loc = await prisma.location.findUniqueOrThrow({ where: { id: locationId } });
   await prisma.$transaction(

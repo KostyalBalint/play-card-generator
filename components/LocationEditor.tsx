@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   createCardInLocation,
   createLocationPanorama,
+  deleteCardFromLocation,
   deleteLocation,
   reorderLocation,
   splitPanorama,
@@ -141,6 +142,12 @@ export function LocationEditor({
                 [ids[i], ids[j]] = [ids[j], ids[i]];
                 run(() => reorderLocation(location.id, ids));
               }}
+              onDelete={() => {
+                const label = card.positionLabel ?? card.name;
+                if (!confirm(`Delete card ${label} (“${card.name}”)? Its images are removed too.`)) return;
+                if (openCardId === card.id) setOpenCardId(null);
+                run(() => deleteCardFromLocation(card.id));
+              }}
             />
           ))}
           <form
@@ -194,6 +201,7 @@ function CardTile({
   heightMm,
   onOpen,
   onMove,
+  onDelete,
 }: {
   card: CardWithFaces;
   defaultBack: FaceWithImages | null;
@@ -204,6 +212,7 @@ function CardTile({
   heightMm: number;
   onOpen: () => void;
   onMove: (dir: -1 | 1) => void;
+  onDelete: () => void;
 }) {
   // Cards with no own back fall back to the set's default shared back.
   const back = card.back ?? defaultBack;
@@ -268,6 +277,13 @@ function CardTile({
             className="rounded border px-1 disabled:opacity-30 dark:border-zinc-700"
           >
             ↓
+          </button>
+          <button
+            onClick={onDelete}
+            title="Delete this card"
+            className="rounded border border-red-300 px-1 text-red-600 hover:bg-red-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950"
+          >
+            ✕
           </button>
         </span>
       </div>
