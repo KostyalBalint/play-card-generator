@@ -6,6 +6,7 @@ import { openai, IMAGE_MODEL } from "@/lib/openai";
 import { buildEditPrompt, buildImagePrompt, buildPromptWithReference, buildTextAlterPrompt } from "@/lib/prompts";
 import { readStorageFile, writeStorageFile } from "@/lib/storage";
 import { sizeForSet } from "@/lib/sizes";
+import { MAP_COLS, MAP_ROWS, masterTileMm } from "@/lib/maps";
 
 export const maxDuration = 300;
 
@@ -24,6 +25,8 @@ async function faceContext(faceId: string) {
       backOfCards: { include: { set: true }, take: 1 },
       sharedBackOfSet: true,
       panoramaOfLocation: { include: { set: true, cards: { where: { inPanorama: true } } } },
+      mapMasterOf: { include: { set: true } },
+      mapBackOf: { include: { set: true } },
     },
   });
   if (!face) return null;
@@ -32,13 +35,18 @@ async function faceContext(faceId: string) {
     face.frontOfCard?.set ??
     face.backOfCards[0]?.set ??
     face.panoramaOfLocation?.set ??
+    face.mapMasterOf?.set ??
+    face.mapBackOf?.set ??
     null;
   // Item numbers live only on the back overlay — never bake them onto the front.
   const cardNumber =
     set?.showNumbers && !face.frontOfCard?.isItem ? face.frontOfCard?.number ?? null : null;
   // Panorama faces are generated wide: one image spanning N member cards side-by-side.
   const panoramaSpan = face.panoramaOfLocation ? Math.max(1, face.panoramaOfLocation.cards.length) : 0;
-  return { face, set, cardNumber, panoramaSpan };
+  // Map masters are one illustration cut into a MAP_COLS x MAP_ROWS grid of cards,
+  // drawn turned 90° when the assembled map is landscape.
+  const mapMaster = face.mapMasterOf;
+  return { face, set, cardNumber, panoramaSpan, mapMaster };
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ faceId: string }> }) {
@@ -47,7 +55,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ fac
   if (!ctx || !ctx.set) {
     return NextResponse.json({ error: "Face or owning set not found" }, { status: 404 });
   }
-  const { face, set, cardNumber, panoramaSpan } = ctx;
+  const { face, set, cardNumber, panoramaSpan, mapMaster } = ctx;
 
   // Optional body: { referenceImageId, alterPrompt } switches to image-edit mode.
   // The plain-generate client sends no body at all — req.json() would throw.
@@ -74,6 +82,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ fac
             backOfCards: { take: 1 },
             sharedBackOfSet: true,
             panoramaOfLocation: true,
+            mapMasterOf: true,
+            mapBackOf: true,
           },
         },
       },
@@ -86,6 +96,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ fac
       refImage.face.frontOfCard?.setId ??
       refImage.face.backOfCards[0]?.setId ??
       refImage.face.panoramaOfLocation?.setId ??
+      refImage.face.mapMasterOf?.setId ??
+      refImage.face.mapBackOf?.setId ??
       null;
     if (refSetId !== set.id) {
       return NextResponse.json({ error: "Reference image belongs to a different set" }, { status: 400 });
@@ -99,7 +111,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ fac
       : body.useFacePrompt
         ? buildPromptWithReference(face, set, cardNumber)
         : buildEditPrompt(body.alterPrompt!, set)
-    : buildImagePrompt(face, set, cardNumber);
+    : buildImagePrompt(
+        face,
+        // A map master describes its own tiles, which lie on their side when the
+        // assembled map is landscape.
+        mapMaster ? { ...set, ...masterTileMm(sizeForSet(set), mapMaster.landscape) } : set,
+        cardNumber,
+        mapMaster ? { cols: MAP_COLS, rows: MAP_ROWS } : null,
+      );
 
   const record = await prisma.generatedImage.create({
     data: { faceId, status: "PENDING", resolvedPrompt, sourceImageId: reference?.id ?? null },
@@ -107,8 +126,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ fac
 
   try {
     const { widthMm, heightMm } = sizeForSet(set);
-    // Panorama: one wide image spanning panoramaSpan cards side-by-side.
-    const size = panoramaSpan > 0 ? "1536x1024" : apiImageSize(widthMm, heightMm);
+    // Panorama: one wide image spanning panoramaSpan cards side-by-side. A map
+    // master keeps the card aspect (a square grid preserves it) but turns it on
+    // its side for a landscape map → 1536x1024 instead of 1024x1536.
+    const master = mapMaster ? masterTileMm({ widthMm, heightMm }, mapMaster.landscape) : null;
+    const size =
+      panoramaSpan > 0
+        ? "1536x1024"
+        : master
+          ? apiImageSize(master.widthMm, master.heightMm)
+          : apiImageSize(widthMm, heightMm);
 
     const result = reference
       ? await openai.images.edit({

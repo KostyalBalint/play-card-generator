@@ -7,6 +7,7 @@ import { deleteSet } from "@/actions/sets";
 import { SetSettingsForm } from "@/components/SetSettingsForm";
 import { BackDesignManager } from "@/components/BackDesignManager";
 import { LocationManager } from "@/components/LocationManager";
+import { MapManager } from "@/components/MapManager";
 import { ItemManager } from "@/components/ItemManager";
 import { CardFacePreview } from "@/components/CardFacePreview";
 
@@ -20,13 +21,16 @@ export default async function SetPage({ params }: { params: Promise<{ setId: str
       cards: { orderBy: { orderIndex: "asc" }, include: { front: true } },
       sharedBacks: { include: { images: { orderBy: { createdAt: "desc" } } } },
       locations: { orderBy: { orderIndex: "asc" }, include: { _count: { select: { cards: true } } } },
+      maps: { orderBy: { orderIndex: "asc" }, include: { _count: { select: { cards: true } } } },
     },
   });
   if (!set) notFound();
 
   const { widthMm, heightMm } = sizeForSet(set);
   const items = set.cards.filter((c) => c.isItem);
-  const looseCards = set.cards.filter((c) => c.locationId === null && !c.isItem);
+  const looseCards = set.cards.filter(
+    (c) => c.locationId === null && !c.isItem && c.mapId === null,
+  );
 
   return (
     <main className="mx-auto max-w-5xl space-y-8 p-8">
@@ -64,6 +68,15 @@ export default async function SetPage({ params }: { params: Promise<{ setId: str
           optional panorama spanning the members&apos; backs.
         </p>
         <LocationManager setId={set.id} locations={set.locations} />
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="font-semibold">Maps</h2>
+        <p className="text-xs text-zinc-400">
+          One illustration cut into a 2×2 grid of cards that tile back together on the table. All of a
+          map&apos;s cards share one back design.
+        </p>
+        <MapManager setId={set.id} maps={set.maps} />
       </section>
 
       <section className="space-y-3">

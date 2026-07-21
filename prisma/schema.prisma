@@ -38,6 +38,7 @@ model CardSet {
   heightMm      Float      @default(120)
   cards         Card[]
   locations     Location[]
+  maps          Map[]
   sharedBacks   CardFace[] @relation("SetSharedBacks")
   defaultBackId String?
   createdAt     DateTime   @default(now())
@@ -58,12 +59,41 @@ model Location {
   updatedAt   DateTime  @updatedAt
 }
 
+/**
+ * A map is one illustration printed across a 2x2 grid of cards (T.I.M.E Stories
+ * style): the master image is sliced into the four cards' *fronts*, and all four
+ * share one back design. A 2x2 block of card-aspect tiles has the same aspect as
+ * a single card, so the master is generated at the normal card size and each
+ * quadrant comes out card-aspect already. See lib/maps + actions/maps.
+ */
+model Map {
+  id         String    @id @default(cuid())
+  set        CardSet   @relation(fields: [setId], references: [id], onDelete: Cascade)
+  setId      String
+  name       String
+  orderIndex Int       @default(0)
+  // The assembled map reads landscape: the master is generated turned 90° and
+  // rotated back before slicing, so the cards themselves stay portrait and the
+  // finished grid is turned a quarter turn on the table. See lib/maps.
+  landscape  Boolean   @default(true)
+  master     CardFace? @relation("MapMaster", fields: [masterId], references: [id], onDelete: SetNull)
+  masterId   String?   @unique
+  back       CardFace? @relation("MapBack", fields: [backId], references: [id], onDelete: SetNull)
+  backId     String?   @unique
+  cards      Card[]
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+}
+
 model Card {
   id            String    @id @default(cuid())
   set           CardSet   @relation(fields: [setId], references: [id], onDelete: Cascade)
   setId         String
   location      Location? @relation(fields: [locationId], references: [id], onDelete: SetNull)
   locationId    String?
+  // Map member: its front holds one quadrant of the map's master image.
+  map           Map?      @relation(fields: [mapId], references: [id], onDelete: Cascade)
+  mapId         String?
   positionLabel String?
   backText      String?
   inPanorama    Boolean   @default(false)
@@ -107,6 +137,8 @@ model CardFace {
   frontOfCard     Card?            @relation("CardFront")
   backOfCards     Card[]           @relation("CardBack")
   panoramaOfLocation Location?     @relation("LocationPanorama")
+  mapMasterOf     Map?             @relation("MapMaster")
+  mapBackOf       Map?             @relation("MapBack")
   sharedBackOfSet CardSet?         @relation("SetSharedBacks", fields: [sharedBackSetId], references: [id], onDelete: Cascade)
   sharedBackSetId String?
   createdAt       DateTime         @default(now())

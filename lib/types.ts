@@ -19,4 +19,4 @@ export function draftFromFace(face: CardFace): FaceDraft {
 }
 
 export type { Card, CardFace, CardSet, GeneratedImage };
-export type { Location } from "@/lib/generated/prisma/client";
+export type { Location, Map } from "@/lib/generated/prisma/client";

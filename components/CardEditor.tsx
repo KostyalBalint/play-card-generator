@@ -111,6 +111,21 @@ export function CardEditor({
               onDraftChange={setFrontDraft}
               backReferenceImageId={back?.activeImageId ?? null}
             />
+          ) : card.mapId ? (
+            // All of a map's cards share the map's one back face — editing it here
+            // (or "customizing") would silently unshare it, so send the user to the map.
+            back ? (
+              <FaceForm
+                key={back.id}
+                face={back}
+                widthMm={widthMm}
+                heightMm={heightMm}
+                readOnly
+                readOnlyNote="This back is shared by every card of the map. Edit it on the map page."
+              />
+            ) : (
+              <p className="text-sm text-zinc-400">This map card has no back design yet.</p>
+            )
           ) : card.isItem ? (
             // Items always use the set's default shared back; the item number is
             // drawn over it as a rendered overlay (not baked, not editable here).

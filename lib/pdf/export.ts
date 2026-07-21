@@ -19,16 +19,16 @@ export async function exportSetPdf(setId: string): Promise<Uint8Array> {
   const set = await prisma.cardSet.findUniqueOrThrow({
     where: { id: setId },
     include: {
-      cards: { orderBy: { orderIndex: "asc" }, include: { location: true } },
+      cards: { orderBy: { orderIndex: "asc" }, include: { location: true, map: true } },
     },
   });
 
   const { widthMm, heightMm } = sizeForSet(set);
   const grid = computeGrid(widthMm, heightMm);
 
-  // Group contiguously by tier: located cards (by location/card order), then
-  // items (by number), then loose cards.
-  const tier = (c: (typeof set.cards)[number]) => (c.location ? 0 : c.isItem ? 1 : 2);
+  // Group contiguously by tier: located cards (by location/card order), then maps
+  // (by map order), then items (by number), then loose cards.
+  const tier = (c: (typeof set.cards)[number]) => (c.location ? 0 : c.map ? 1 : c.isItem ? 2 : 3);
   const ordered = [...set.cards].sort((a, b) => {
     const ta = tier(a);
     const tb = tier(b);
@@ -36,7 +36,10 @@ export async function exportSetPdf(setId: string): Promise<Uint8Array> {
     if (ta === 0 && a.location && b.location && a.location.orderIndex !== b.location.orderIndex) {
       return a.location.orderIndex - b.location.orderIndex;
     }
-    if (ta === 1) return (a.number ?? 0) - (b.number ?? 0) || a.orderIndex - b.orderIndex;
+    if (ta === 1 && a.map && b.map && a.map.orderIndex !== b.map.orderIndex) {
+      return a.map.orderIndex - b.map.orderIndex;
+    }
+    if (ta === 2) return (a.number ?? 0) - (b.number ?? 0) || a.orderIndex - b.orderIndex;
     return a.orderIndex - b.orderIndex;
   });
 
