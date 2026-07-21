@@ -47,6 +47,7 @@ export function SetSettingsForm({ set }: { set: CardSet }) {
           >
             <option value="TAROT">Tarot (70 × 120 mm)</option>
             <option value="POKER">Poker (63.5 × 88.9 mm)</option>
+            <option value="IMAGE_2_3">Image native 2:3 (70 × 105 mm)</option>
             <option value="CUSTOM">Custom</option>
           </select>
         </div>

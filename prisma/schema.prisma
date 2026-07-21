@@ -11,6 +11,7 @@ datasource db {
 enum SizePreset {
   POKER
   TAROT
+  IMAGE_2_3
   CUSTOM
 }
 

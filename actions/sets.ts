@@ -11,7 +11,7 @@ const setSchema = z.object({
   description: z.string().optional(),
   stylePrompt: z.string().default(""),
   showNumbers: z.preprocess((v) => v === "on" || v === "true" || v === true, z.boolean()),
-  sizePreset: z.enum(["POKER", "TAROT", "CUSTOM"]).default("TAROT"),
+  sizePreset: z.enum(["POKER", "TAROT", "IMAGE_2_3", "CUSTOM"]).default("TAROT"),
   widthMm: z.coerce.number().positive().max(200).default(70),
   heightMm: z.coerce.number().positive().max(287).default(120),
 });
