@@ -91,7 +91,8 @@ export function ItemManager({
             ))}
           </select>
           <p className="text-xs text-zinc-400">
-            Every item shares this back, with its number drawn over it.
+            Every item shares this back, with its number drawn over it. Placement + look of that number
+            is the back&apos;s own overlay text style — edit it under Card backs.
           </p>
         </div>
       </div>

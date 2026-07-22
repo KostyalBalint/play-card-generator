@@ -1,46 +1,92 @@
 import type { FaceOverlay } from "@/lib/overlay";
+import {
+  DEFAULT_OVERLAY_STYLE,
+  FONT_CATALOG,
+  PLATE_PAD_X_EM,
+  PLATE_PAD_Y_EM,
+  PLATE_RADIUS_EM,
+  placement,
+  plateFill,
+  type OverlayStyle,
+  type OverlayTextStyle,
+} from "@/lib/overlaystyle";
+
+/** One positioned text plate. Sizes are cqw, so the parent must be an inline-size container. */
+function OverlaySlot({
+  text,
+  style,
+  aspect,
+}: {
+  text: string;
+  style: OverlayTextStyle;
+  aspect: number;
+}) {
+  const p = placement(style, aspect);
+  const fill = plateFill(style);
+  const translate = (align: "start" | "center" | "end") =>
+    align === "start" ? "0" : align === "center" ? "-50%" : "-100%";
+  return (
+    <div
+      className="absolute"
+      style={{
+        left: `${p.xFrac * 100}%`,
+        top: `${p.yFrac * 100}%`,
+        transform: `translate(${translate(p.alignX)}, ${translate(p.alignY)})`,
+        // sizePct is % of card height; cqw is % of card width.
+        fontSize: `${style.sizePct / aspect}cqw`,
+      }}
+    >
+      <div
+        style={{
+          padding: `${PLATE_PAD_Y_EM}em ${PLATE_PAD_X_EM}em`,
+          borderRadius: `${PLATE_RADIUS_EM}em`,
+          backgroundColor: fill ? hexWithAlpha(fill.color, fill.opacity) : "transparent",
+        }}
+      >
+        <span
+          className="whitespace-nowrap leading-none"
+          style={{
+            color: hexWithAlpha(style.color, style.textOpacity / 100),
+            fontFamily: FONT_CATALOG[style.font].css,
+            fontWeight: style.bold ? 700 : 400,
+          }}
+        >
+          {text}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function hexWithAlpha(hex: string, alpha: number): string {
+  const a = Math.round(alpha * 255)
+    .toString(16)
+    .padStart(2, "0");
+  return `${hex}${a}`;
+}
 
 /**
- * Rendered (not baked) overlay drawn over a face image — see lib/overlay.
- * Geometry mirrors drawOverlay in lib/pdf/export so screen matches print: the
- * label sits dead centre, the caption is bottom-centred one inset up. Font =
- * 10% of card height, caption = 45% of that, inset = 5% of card width, plate
- * padding = 0.4/0.25em. Sizes in cqw, so the parent must be a
- * `[container-type:inline-size]` box with the card's aspect ratio.
+ * Rendered (not baked) overlay drawn over a face image — see lib/overlay for the
+ * text, lib/overlaystyle for placement + look. Geometry mirrors drawOverlay in
+ * lib/pdf/export so screen matches print.
  */
 export function FaceOverlayLabel({
   overlay,
   widthMm,
   heightMm,
+  style = DEFAULT_OVERLAY_STYLE,
 }: {
   overlay: FaceOverlay;
   widthMm: number;
   heightMm: number;
+  style?: OverlayStyle;
 }) {
-  const size = (10 * heightMm) / widthMm;
-  // rounded radius = 0.3em, matching roundedRectPath in lib/pdf/export
-  const plate = "rounded-[0.3em] bg-black/55 text-white";
+  const aspect = widthMm / heightMm;
   return (
-    <div
-      className="pointer-events-none absolute inset-0"
-      style={{ fontSize: `${size}cqw` }}
-    >
-      {overlay.label ? (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className={plate} style={{ padding: "0.25em 0.4em" }}>
-            <span className="font-bold leading-none tracking-wide">{overlay.label}</span>
-          </div>
-        </div>
-      ) : null}
+    <div className="pointer-events-none absolute inset-0">
+      {overlay.label ? <OverlaySlot text={overlay.label} style={style.label} aspect={aspect} /> : null}
       {overlay.caption ? (
-        <div
-          className="absolute left-1/2 flex -translate-x-1/2 justify-center"
-          style={{ bottom: "5cqw" }}
-        >
-          <div className={plate} style={{ padding: "0.25em 0.4em", fontSize: "0.45em" }}>
-            <span className="whitespace-nowrap font-medium leading-none">{overlay.caption}</span>
-          </div>
-        </div>
+        <OverlaySlot text={overlay.caption} style={style.caption} aspect={aspect} />
       ) : null}
     </div>
   );
@@ -52,6 +98,7 @@ export function CardFacePreview({
   heightMm,
   label,
   overlay,
+  overlayStyle,
   className = "",
 }: {
   activeImageId: string | null | undefined;
@@ -60,6 +107,8 @@ export function CardFacePreview({
   label?: string;
   /** Rendered (not baked) label + caption drawn over the image — see lib/overlay. */
   overlay?: FaceOverlay | null;
+  /** Placement + look of that overlay; omitted = the built-in default. */
+  overlayStyle?: OverlayStyle;
   className?: string;
 }) {
   return (
@@ -79,7 +128,14 @@ export function CardFacePreview({
           {label ?? "No image yet"}
         </div>
       )}
-      {overlay ? <FaceOverlayLabel overlay={overlay} widthMm={widthMm} heightMm={heightMm} /> : null}
+      {overlay ? (
+        <FaceOverlayLabel
+          overlay={overlay}
+          widthMm={widthMm}
+          heightMm={heightMm}
+          style={overlayStyle}
+        />
+      ) : null}
     </div>
   );
 }

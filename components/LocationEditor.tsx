@@ -12,7 +12,9 @@ import {
   updateLocationMeta,
 } from "@/actions/locations";
 import { overlayFor } from "@/lib/overlay";
+import { parseOverlayStyle } from "@/lib/overlaystyle";
 import { FaceForm } from "./FaceForm";
+import { OverlayStyleEditor } from "./OverlayStyleEditor";
 import { CardFacePreview } from "./CardFacePreview";
 import { CardFaceModal } from "./CardFaceModal";
 import type { Card, CardSet, FaceWithImages, Location } from "@/lib/types";
@@ -100,11 +102,29 @@ export function LocationEditor({
             position letter is drawn as an overlay automatically (no per-card generation).
           </p>
           {location.panorama ? (
-            <FaceForm
-              face={location.panorama}
-              widthMm={Math.max(1, members.length) * widthMm}
-              heightMm={heightMm}
-            />
+            <>
+              <FaceForm
+                face={location.panorama}
+                widthMm={Math.max(1, members.length) * widthMm}
+                heightMm={heightMm}
+              />
+              <div className="space-y-2 border-t border-zinc-200 pt-4 dark:border-zinc-800">
+                <div>
+                  <h3 className="text-sm font-semibold">Overlay text style</h3>
+                  <p className="text-xs text-zinc-400">
+                    Placement + look of the letters drawn on the slices. Applied to every slice on the
+                    next “Split to cards”.
+                  </p>
+                </div>
+                <OverlayStyleEditor
+                  face={location.panorama}
+                  widthMm={widthMm}
+                  heightMm={heightMm}
+                  sampleLabel="A"
+                  sampleCaption={location.name}
+                />
+              </div>
+            </>
           ) : (
             <button
               onClick={() => run(() => createLocationPanorama(location.id))}
@@ -217,6 +237,7 @@ function CardTile({
   // Cards with no own back fall back to the set's default shared back.
   const back = card.back ?? defaultBack;
   const overlay = overlayFor(card, back, locationName);
+  const overlayStyle = parseOverlayStyle(back?.overlayStyle);
   const frontState = faceState(card.front);
   const backState = faceState(back);
   const backIsMain = true;
@@ -234,6 +255,7 @@ function CardTile({
           heightMm={heightMm}
           label={backIsMain ? "back" : card.name}
           overlay={backIsMain ? overlay : null}
+          overlayStyle={overlayStyle}
           className="ring-1 ring-transparent group-hover:ring-blue-400"
         />
         <span className="absolute left-1.5 top-1.5 rounded bg-black/60 px-1.5 py-0.5 text-xs font-bold text-white">
@@ -247,6 +269,7 @@ function CardTile({
             heightMm={heightMm}
             label={backIsMain ? "front" : "back"}
             overlay={backIsMain ? null : overlay}
+            overlayStyle={overlayStyle}
           />
         </span>
         {card.inPanorama && (

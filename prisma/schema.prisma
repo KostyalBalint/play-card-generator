@@ -133,6 +133,10 @@ model CardFace {
   // preview + PDF time (cheap, style-consistent, reorder-safe) instead of being
   // baked into the image. Used by panorama member backs.
   labelOverlay    Boolean          @default(false)
+  // Placement + look of the rendered overlay drawn over THIS face (label and
+  // caption): anchor, offset, size, colour, plate, font. Null = the built-in
+  // default. Shape + parsing live in lib/overlaystyle.
+  overlayStyle    Json?
   basedOnFace     CardFace?        @relation("FaceVariants", fields: [basedOnFaceId], references: [id], onDelete: SetNull)
   basedOnFaceId   String?
   variants        CardFace[]       @relation("FaceVariants")

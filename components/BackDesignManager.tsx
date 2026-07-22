@@ -10,6 +10,7 @@ import {
 } from "@/actions/backs";
 import { FaceForm } from "./FaceForm";
 import { CardFacePreview } from "./CardFacePreview";
+import { OverlayStyleEditor } from "./OverlayStyleEditor";
 import type { CardSet, FaceWithImages } from "@/lib/types";
 
 export function BackDesignManager({
@@ -162,6 +163,23 @@ export function BackDesignManager({
                 : ""
             }
           />
+
+          <div className="mt-4 space-y-2 border-t border-zinc-200 pt-4 dark:border-zinc-800">
+            <div>
+              <h3 className="text-sm font-semibold">Overlay text style</h3>
+              <p className="text-xs text-zinc-400">
+                Where the drawn-on text sits and how it looks on this back — item numbers, position
+                letters, captions. Every card using this back follows it.
+              </p>
+            </div>
+            <OverlayStyleEditor
+              key={open.id}
+              face={open}
+              widthMm={widthMm}
+              heightMm={heightMm}
+              sampleLabel={open.variantLabel ?? "12"}
+            />
+          </div>
         </div>
       )}
     </div>

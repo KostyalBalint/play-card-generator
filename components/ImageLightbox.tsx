@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { FaceOverlayLabel } from "./CardFacePreview";
 import type { FaceOverlay } from "@/lib/overlay";
+import type { OverlayStyle } from "@/lib/overlaystyle";
 
 const MIN_SCALE = 1;
 const MAX_SCALE = 8;
@@ -13,6 +14,7 @@ export function ImageLightbox({
   widthMm,
   heightMm,
   overlay = null,
+  overlayStyle,
   onClose,
 }: {
   src: string;
@@ -21,6 +23,8 @@ export function ImageLightbox({
   widthMm: number;
   heightMm: number;
   overlay?: FaceOverlay | null;
+  /** Placement + look of that overlay; omitted = the built-in default. */
+  overlayStyle?: OverlayStyle;
   onClose: () => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -125,7 +129,14 @@ export function ImageLightbox({
           draggable={false}
           className="absolute inset-0 h-full w-full object-cover"
         />
-        {overlay ? <FaceOverlayLabel overlay={overlay} widthMm={widthMm} heightMm={heightMm} /> : null}
+        {overlay ? (
+          <FaceOverlayLabel
+            overlay={overlay}
+            widthMm={widthMm}
+            heightMm={heightMm}
+            style={overlayStyle}
+          />
+        ) : null}
       </div>
       <button
         onClick={onClose}

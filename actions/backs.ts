@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
+import { parseOverlayStyle, type OverlayStyle } from "@/lib/overlaystyle";
 
 export async function createSharedBack(setId: string, formData: FormData) {
   const title = String(formData.get("title") ?? "Card back");
@@ -42,6 +43,34 @@ export async function deleteSharedBack(setId: string, faceId: string) {
     prisma.cardFace.deleteMany({ where: { id: { in: ids } } }),
   ]);
   revalidatePath(`/sets/${setId}`);
+}
+
+/**
+ * Set how the rendered overlay (item number, position letter, caption) is placed
+ * and styled over this face. Lives on the face, so every card using a shared
+ * back inherits the same arrangement. See lib/overlaystyle.
+ */
+export async function updateOverlayStyle(faceId: string, style: OverlayStyle) {
+  const face = await prisma.cardFace.findUniqueOrThrow({
+    where: { id: faceId },
+    select: {
+      sharedBackSetId: true,
+      backOfCards: { select: { setId: true }, take: 1 },
+      panoramaOfLocation: { select: { setId: true } },
+      mapBackOf: { select: { setId: true } },
+    },
+  });
+  await prisma.cardFace.update({
+    where: { id: faceId },
+    // Re-parsed server-side: unknown keys and out-of-range numbers are dropped.
+    data: { overlayStyle: parseOverlayStyle(style) },
+  });
+  const setId =
+    face.sharedBackSetId ??
+    face.panoramaOfLocation?.setId ??
+    face.mapBackOf?.setId ??
+    face.backOfCards[0]?.setId;
+  if (setId) revalidatePath(`/sets/${setId}`, "layout");
 }
 
 /** Create a label variant of a shared back ("pack" member: same design, different text). */

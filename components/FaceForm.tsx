@@ -6,6 +6,7 @@ import { updateFace, setActiveImage } from "@/actions/cards";
 import { CardFacePreview } from "./CardFacePreview";
 import { ImageLightbox } from "./ImageLightbox";
 import type { FaceOverlay } from "@/lib/overlay";
+import { parseOverlayStyle } from "@/lib/overlaystyle";
 import type { FaceDraft, FaceWithImages } from "@/lib/types";
 import { draftFromFace } from "@/lib/types";
 
@@ -132,6 +133,8 @@ export function FaceForm({
   }
 
   const refImageId = face.activeImageId ?? defaultReferenceImageId;
+  // The overlay's placement + look ride on the face itself — see lib/overlaystyle.
+  const overlayStyle = parseOverlayStyle(face.overlayStyle);
 
   const doneImages = face.images.filter((img) => img.status === "DONE");
 
@@ -153,6 +156,7 @@ export function FaceForm({
           widthMm={widthMm}
           heightMm={heightMm}
           overlay={overlay}
+          overlayStyle={overlayStyle}
           onClose={() => setLightboxOpen(false)}
         />
       )}
@@ -168,6 +172,7 @@ export function FaceForm({
             heightMm={heightMm}
             label={draft.title || "No image yet"}
             overlay={overlay}
+            overlayStyle={overlayStyle}
           />
           {generating && (
             <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/40">

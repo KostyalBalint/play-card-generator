@@ -1,4 +1,7 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { PDFDocument, PDFImage, PDFPage, rgb, StandardFonts } from "pdf-lib";
+import fontkit from "@pdf-lib/fontkit";
 import { prisma } from "@/lib/prisma";
 import { readStorageFile } from "@/lib/storage";
 import { coverCrop } from "@/lib/imagecrop";
@@ -6,11 +9,71 @@ import { sizeForSet } from "@/lib/sizes";
 import { resolveBackFaceId } from "@/lib/faces";
 import { buildBackText } from "@/lib/locations";
 import { overlayFor, type FaceOverlay } from "@/lib/overlay";
+import {
+  DEFAULT_OVERLAY_STYLE,
+  FONT_CATALOG,
+  PLATE_PAD_X_EM,
+  PLATE_PAD_Y_EM,
+  PLATE_RADIUS_EM,
+  hexToRgb,
+  parseOverlayStyle,
+  placement,
+  plateFill,
+  type OverlayStyle,
+  type OverlayTextStyle,
+} from "@/lib/overlaystyle";
 import { A4, computeGrid, Grid, mmToPt, Slot } from "./grid";
 
 type FaceSprite =
   | { kind: "image"; image: PDFImage }
   | { kind: "placeholder"; label: string };
+
+type EmbeddedFont = Awaited<ReturnType<PDFDocument["embedFont"]>>;
+
+/** The fonts this document needs, keyed `${family}:${weight}` — see FontBook. */
+type FontBook = { get: (style: OverlayTextStyle) => EmbeddedFont; fallback: EmbeddedFont };
+
+const STANDARD_FONTS: Record<string, { regular: StandardFonts; bold: StandardFonts }> = {
+  sans: { regular: StandardFonts.Helvetica, bold: StandardFonts.HelveticaBold },
+  serif: { regular: StandardFonts.TimesRoman, bold: StandardFonts.TimesRomanBold },
+  mono: { regular: StandardFonts.Courier, bold: StandardFonts.CourierBold },
+};
+
+const fontKey = (style: OverlayTextStyle) => `${style.font}:${style.bold ? "bold" : "regular"}`;
+
+/**
+ * Embed only the fonts the given styles actually use: PDF standard fonts by
+ * name, bundled OFL families from public/fonts through fontkit (subsetted).
+ * A missing or unreadable file degrades to Helvetica rather than failing the
+ * export.
+ */
+async function buildFontBook(pdf: PDFDocument, styles: OverlayStyle[]): Promise<FontBook> {
+  pdf.registerFontkit(fontkit);
+  const fallback = await pdf.embedFont(StandardFonts.Helvetica);
+  const book = new Map<string, EmbeddedFont>();
+  const wanted = new Map<string, OverlayTextStyle>();
+  for (const style of styles) {
+    for (const slot of [style.label, style.caption]) wanted.set(fontKey(slot), slot);
+  }
+  for (const [key, slot] of wanted) {
+    const entry = FONT_CATALOG[slot.font];
+    try {
+      if (!entry.files) {
+        const std = STANDARD_FONTS[slot.font];
+        book.set(key, await pdf.embedFont(slot.bold ? std.bold : std.regular));
+        continue;
+      }
+      // Families with no bold cut reuse the regular file — same as the preview,
+      // whose @font-face maps 400-700 onto it.
+      const file = (slot.bold && entry.files.bold) || entry.files.regular;
+      const bytes = await readFile(path.join(process.cwd(), "public", "fonts", file));
+      book.set(key, await pdf.embedFont(bytes, { subset: entry.files.subset }));
+    } catch {
+      book.set(key, fallback);
+    }
+  }
+  return { get: (style) => book.get(fontKey(style)) ?? fallback, fallback };
+}
 
 const CUT_MARK_LEN_MM = 4;
 const CUT_MARK_GAP_MM = 0.5;
@@ -75,7 +138,6 @@ export async function exportSetPdf(setId: string): Promise<Uint8Array> {
   }
 
   const pdf = await PDFDocument.create();
-  const font = await pdf.embedFont(StandardFonts.Helvetica);
 
   // Embed each distinct face image once
   const faceIds = new Set<string>();
@@ -86,12 +148,15 @@ export async function exportSetPdf(setId: string): Promise<Uint8Array> {
   const sprites = new Map<string, FaceSprite>();
   // Faces whose label is drawn as a rendered overlay (panorama members), not baked.
   const overlayFaces = new Set<string>();
+  // Per-face overlay placement/look — a back design carries its own arrangement.
+  const overlayStyles = new Map<string, OverlayStyle>();
   const faces = await prisma.cardFace.findMany({
     where: { id: { in: [...faceIds] } },
     include: { images: true },
   });
   for (const face of faces) {
     if (face.labelOverlay) overlayFaces.add(face.id);
+    overlayStyles.set(face.id, parseOverlayStyle(face.overlayStyle));
     const active = face.images.find(
       (img) => img.id === face.activeImageId && img.status === "DONE" && img.filePath,
     );
@@ -105,6 +170,8 @@ export async function exportSetPdf(setId: string): Promise<Uint8Array> {
     }
   }
 
+  const fonts = await buildFontBook(pdf, [...overlayStyles.values(), DEFAULT_OVERLAY_STYLE]);
+
   const pageW = mmToPt(A4.widthMm);
   const pageH = mmToPt(A4.heightMm);
 
@@ -113,7 +180,7 @@ export async function exportSetPdf(setId: string): Promise<Uint8Array> {
 
     const frontPage = pdf.addPage([pageW, pageH]);
     chunk.forEach((slot, idx) => {
-      drawFace(frontPage, sprites.get(slot.frontFaceId)!, grid.frontSlots[idx], grid, font, slot.name);
+      drawFace(frontPage, sprites.get(slot.frontFaceId)!, grid.frontSlots[idx], grid, fonts, slot.name);
     });
     drawCutMarks(frontPage, chunk.length, grid.frontSlots, grid);
 
@@ -134,7 +201,16 @@ export async function exportSetPdf(setId: string): Promise<Uint8Array> {
           (slot.backFaceId && overlayFaces.has(slot.backFaceId) && slot.backLabel
             ? { label: null, caption: slot.backLabel }
             : null);
-      drawFace(backPage, sprite, grid.backSlots[idx], grid, font, slot.name, overlay);
+      drawFace(
+        backPage,
+        sprite,
+        grid.backSlots[idx],
+        grid,
+        fonts,
+        slot.name,
+        overlay,
+        (slot.backFaceId && overlayStyles.get(slot.backFaceId)) || DEFAULT_OVERLAY_STYLE,
+      );
     });
     drawCutMarks(backPage, chunk.length, grid.backSlots, grid);
   }
@@ -147,9 +223,10 @@ function drawFace(
   sprite: FaceSprite,
   slot: Slot,
   grid: Grid,
-  font: Awaited<ReturnType<PDFDocument["embedFont"]>>,
+  fonts: FontBook,
   name: string,
   overlay: FaceOverlay | null = null,
+  overlayStyle: OverlayStyle = DEFAULT_OVERLAY_STYLE,
 ) {
   const x = mmToPt(slot.xMm);
   // pdf-lib origin is bottom-left; slot coords are top-left mm
@@ -159,7 +236,7 @@ function drawFace(
 
   if (sprite.kind === "image") {
     page.drawImage(sprite.image, { x, y, width: w, height: h });
-    if (overlay) drawOverlay(page, overlay, x, y, w, h, font);
+    if (overlay) drawOverlay(page, overlay, x, y, w, h, fonts, overlayStyle);
   } else {
     page.drawRectangle({
       x,
@@ -172,6 +249,7 @@ function drawFace(
     });
     const label = `${name} (${sprite.label})`;
     const size = 9;
+    const font = fonts.fallback;
     const textWidth = font.widthOfTextAtSize(label, size);
     page.drawText(label, {
       x: x + (w - textWidth) / 2,
@@ -184,9 +262,9 @@ function drawFace(
 }
 
 /**
- * Rendered label (+ optional caption) drawn over a back image: the label dead
- * centre, the caption bottom-centred one inset up. Geometry is mirrored by
- * FaceOverlayLabel in components/CardFacePreview so the preview matches print.
+ * Rendered label (+ optional caption) drawn over a back image, placed and styled
+ * per the back face's own overlay style (lib/overlaystyle). Geometry is mirrored
+ * by FaceOverlayLabel in components/CardFacePreview so preview matches print.
  */
 function drawOverlay(
   page: PDFPage,
@@ -195,49 +273,66 @@ function drawOverlay(
   y: number,
   w: number,
   h: number,
-  font: Awaited<ReturnType<PDFDocument["embedFont"]>>,
+  fonts: FontBook,
+  style: OverlayStyle,
 ) {
-  const size = h * 0.1;
-  const inset = w * 0.05;
-  const centerX = x + w / 2;
-  if (overlay.label) {
-    plate(page, overlay.label, size, centerX, y + h / 2 - plateHeight(size) / 2, font);
-  }
-  if (overlay.caption) {
-    plate(page, overlay.caption, size * 0.45, centerX, y + inset, font);
-  }
+  if (overlay.label) plate(page, overlay.label, style.label, x, y, w, h, fonts);
+  if (overlay.caption) plate(page, overlay.caption, style.caption, x, y, w, h, fonts);
 }
 
-/** Plate height for a given font size — padY is 0.25em top and bottom. */
+/** Plate height for a given font size — padY is PLATE_PAD_Y_EM top and bottom. */
 function plateHeight(size: number): number {
-  return size * 1.5;
+  return size * (1 + 2 * PLATE_PAD_Y_EM);
 }
 
-/** One dark text plate, horizontally centred on `centerX`, bottom edge at `bottom`. */
+/** One text plate placed by its style within the card box at (x, y, w, h). */
 function plate(
   page: PDFPage,
   text: string,
-  size: number,
-  centerX: number,
-  bottom: number,
-  font: Awaited<ReturnType<PDFDocument["embedFont"]>>,
+  style: OverlayTextStyle,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  fonts: FontBook,
 ) {
-  const padX = size * 0.4;
-  const padY = size * 0.25;
-  const textW = font.widthOfTextAtSize(text, size);
-  const plateW = textW + 2 * padX;
+  const font = fonts.get(style);
+  const size = h * (style.sizePct / 100);
+  const padX = size * PLATE_PAD_X_EM;
+  const padY = size * PLATE_PAD_Y_EM;
+  const plateW = font.widthOfTextAtSize(text, size) + 2 * padX;
   const plateH = plateHeight(size);
-  const left = centerX - plateW / 2;
-  // pdf-lib's drawRectangle has no border radius → draw the plate as a path.
-  page.drawSvgPath(roundedRectPath(plateW, plateH, size * 0.3), {
-    x: left,
-    // drawSvgPath places the path's origin here and grows downward (SVG y-axis).
-    y: bottom + plateH,
-    color: rgb(0, 0, 0),
-    opacity: 0.55,
-    borderWidth: 0,
+
+  const p = placement(style, w / h);
+  // Placement fractions are top-left origin; pdf-lib's origin is bottom-left.
+  const anchorX = x + p.xFrac * w;
+  const anchorY = y + h - p.yFrac * h;
+  const left = p.alignX === "start" ? anchorX : p.alignX === "end" ? anchorX - plateW : anchorX - plateW / 2;
+  const bottom =
+    p.alignY === "start" ? anchorY - plateH : p.alignY === "end" ? anchorY : anchorY - plateH / 2;
+
+  const fill = plateFill(style);
+  if (fill) {
+    const c = hexToRgb(fill.color);
+    // pdf-lib's drawRectangle has no border radius → draw the plate as a path.
+    page.drawSvgPath(roundedRectPath(plateW, plateH, size * PLATE_RADIUS_EM), {
+      x: left,
+      // drawSvgPath places the path's origin here and grows downward (SVG y-axis).
+      y: bottom + plateH,
+      color: rgb(c.r, c.g, c.b),
+      opacity: fill.opacity,
+      borderWidth: 0,
+    });
+  }
+  const t = hexToRgb(style.color);
+  page.drawText(text, {
+    x: left + padX,
+    y: bottom + padY,
+    size,
+    font,
+    color: rgb(t.r, t.g, t.b),
+    opacity: style.textOpacity / 100,
   });
-  page.drawText(text, { x: left + padX, y: bottom + padY, size, font, color: rgb(1, 1, 1) });
 }
 
 /** Rounded-rect SVG path, origin top-left. Quadratic corners — flip-safe. */

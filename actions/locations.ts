@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import sharp from "sharp";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@/lib/generated/prisma/client";
 import { sizeForSet } from "@/lib/sizes";
 import { writeStorageFile, readStorageFile } from "@/lib/storage";
 import { coverCrop } from "@/lib/imagecrop";
@@ -185,12 +186,20 @@ export async function splitPanorama(locationId: string) {
       const face = await prisma.cardFace.findUnique({ where: { id: backFaceId } });
       if (!face || face.basedOnFaceId !== null || face.sharedBackSetId !== null) backFaceId = null;
     }
+    // The slices inherit the panorama's overlay style, so the letters are placed
+    // and styled once for the whole location (see lib/overlaystyle).
+    const overlayStyle = loc.panorama?.overlayStyle ?? Prisma.DbNull;
     if (!backFaceId) {
-      const created = await prisma.cardFace.create({ data: { textLayout: "NONE", labelOverlay: true } });
+      const created = await prisma.cardFace.create({
+        data: { textLayout: "NONE", labelOverlay: true, overlayStyle },
+      });
       backFaceId = created.id;
       await prisma.card.update({ where: { id: card.id }, data: { backFaceId } });
     } else {
-      await prisma.cardFace.update({ where: { id: backFaceId }, data: { labelOverlay: true } });
+      await prisma.cardFace.update({
+        where: { id: backFaceId },
+        data: { labelOverlay: true, overlayStyle },
+      });
     }
 
     const record = await prisma.generatedImage.create({
