@@ -198,7 +198,7 @@ function SlotControls({
             </option>
           ))}
         </select>
-        {!FONT_CATALOG[style.font].files?.bold && FONT_CATALOG[style.font].files && (
+        {!FONT_CATALOG[style.font].files.bold && (
           <span className="mt-0.5 block text-[11px] text-zinc-400">
             This family has one weight — Bold has no effect.
           </span>

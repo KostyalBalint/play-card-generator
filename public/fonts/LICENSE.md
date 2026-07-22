@@ -8,6 +8,9 @@ All files are Google Fonts releases under the SIL Open Font License 1.1
 
 | File | Family | Source |
 | --- | --- | --- |
+| `notosans-400.ttf`, `notosans-700.ttf` | Noto Sans | fonts.google.com/specimen/Noto+Sans |
+| `notoserif-400.ttf`, `notoserif-700.ttf` | Noto Serif | fonts.google.com/specimen/Noto+Serif |
+| `notomono-400.ttf`, `notomono-700.ttf` | Noto Sans Mono | fonts.google.com/specimen/Noto+Sans+Mono |
 | `cinzel-400.ttf`, `cinzel-700.ttf` | Cinzel | fonts.google.com/specimen/Cinzel |
 | `playfair-400.ttf`, `playfair-700.ttf` | Playfair Display | fonts.google.com/specimen/Playfair+Display |
 | `imfell-400.ttf` | IM Fell English (no bold cut) | fonts.google.com/specimen/IM+Fell+English |
@@ -17,7 +20,10 @@ All files are Google Fonts releases under the SIL Open Font License 1.1
 | `specialelite-400.ttf` | Special Elite (no bold cut) | fonts.google.com/specimen/Special+Elite |
 | `gloria-400.ttf` | Gloria Hallelujah (no bold cut) | fonts.google.com/specimen/Gloria+Hallelujah |
 
-Helvetica / Times / Courier are PDF standard fonts — no file needed.
+The Noto trio backs the plain "sans / serif / mono" choices. PDF's built-in
+Helvetica / Times / Courier would need no file at all, but they are WinAnsi-only
+and throw on Latin Extended-A (`ő`, `ł`), which failed whole exports — they are
+now only a last-resort fallback if a bundled file cannot be read.
 
 Adding a family: drop the TTF here, add an entry to `FONT_CATALOG`
 (`lib/overlaystyle.ts`) and an `@font-face` block to `app/globals.css`, then

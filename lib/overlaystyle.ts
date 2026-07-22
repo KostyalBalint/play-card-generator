@@ -46,18 +46,33 @@ type FontFiles = {
 };
 
 /**
- * The fonts an overlay can use. The first three are PDF standard fonts (no file
- * to embed); the rest are OFL families bundled in public/fonts — the same files
- * back the PDF (embedded via fontkit) and the browser preview (@font-face in
- * app/globals.css), so screen matches print.
+ * The fonts an overlay can use — all OFL families bundled in public/fonts. The
+ * same files back the PDF (embedded via fontkit) and the browser preview
+ * (@font-face in app/globals.css), so screen matches print.
+ *
+ * The three plain families are Noto rather than PDF's built-in
+ * Helvetica/Times/Courier: those are encoded WinAnsi, which cannot represent
+ * Latin Extended-A — a Hungarian ő or a Polish ł killed the whole export.
  */
 export const FONT_CATALOG: Record<
   OverlayFont,
-  { label: string; css: string; files: FontFiles | null }
+  { label: string; css: string; files: FontFiles }
 > = {
-  sans: { label: "Sans (Helvetica)", css: "Helvetica, Arial, sans-serif", files: null },
-  serif: { label: "Serif (Times)", css: '"Times New Roman", Times, serif', files: null },
-  mono: { label: "Mono (Courier)", css: '"Courier New", Courier, monospace', files: null },
+  sans: {
+    label: "Sans (Noto Sans)",
+    css: '"Noto Sans", Arial, sans-serif',
+    files: { regular: "notosans-400.ttf", bold: "notosans-700.ttf", subset: false },
+  },
+  serif: {
+    label: "Serif (Noto Serif)",
+    css: '"Noto Serif", "Times New Roman", serif',
+    files: { regular: "notoserif-400.ttf", bold: "notoserif-700.ttf", subset: false },
+  },
+  mono: {
+    label: "Mono (Noto Sans Mono)",
+    css: '"Noto Sans Mono", "Courier New", monospace',
+    files: { regular: "notomono-400.ttf", bold: "notomono-700.ttf", subset: false },
+  },
   cinzel: {
     label: "Cinzel — roman caps",
     css: '"Cinzel", serif',

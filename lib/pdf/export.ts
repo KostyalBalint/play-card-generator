@@ -33,23 +33,24 @@ type EmbeddedFont = Awaited<ReturnType<PDFDocument["embedFont"]>>;
 /** The fonts this document needs, keyed `${family}:${weight}` — see FontBook. */
 type FontBook = { get: (style: OverlayTextStyle) => EmbeddedFont; fallback: EmbeddedFont };
 
-const STANDARD_FONTS: Record<string, { regular: StandardFonts; bold: StandardFonts }> = {
-  sans: { regular: StandardFonts.Helvetica, bold: StandardFonts.HelveticaBold },
-  serif: { regular: StandardFonts.TimesRoman, bold: StandardFonts.TimesRomanBold },
-  mono: { regular: StandardFonts.Courier, bold: StandardFonts.CourierBold },
-};
-
 const fontKey = (style: OverlayTextStyle) => `${style.font}:${style.bold ? "bold" : "regular"}`;
 
+const fontFile = (file: string) => readFile(path.join(process.cwd(), "public", "fonts", file));
+
 /**
- * Embed only the fonts the given styles actually use: PDF standard fonts by
- * name, bundled OFL families from public/fonts through fontkit (subsetted).
- * A missing or unreadable file degrades to Helvetica rather than failing the
- * export.
+ * Embed only the fonts the given styles actually use, from the bundled OFL
+ * families in public/fonts (see FONT_CATALOG) through fontkit.
+ *
+ * The fallback is Noto Sans, not PDF's built-in Helvetica: the built-ins are
+ * WinAnsi-encoded and throw on anything outside it (ő, ł, …), which would fail
+ * the export rather than just look wrong. Helvetica is the last resort for when
+ * even that file cannot be read.
  */
 async function buildFontBook(pdf: PDFDocument, styles: OverlayStyle[]): Promise<FontBook> {
   pdf.registerFontkit(fontkit);
-  const fallback = await pdf.embedFont(StandardFonts.Helvetica);
+  const fallback = await fontFile(FONT_CATALOG.sans.files.regular)
+    .then((bytes) => pdf.embedFont(bytes, { subset: FONT_CATALOG.sans.files.subset }))
+    .catch(() => pdf.embedFont(StandardFonts.Helvetica));
   const book = new Map<string, EmbeddedFont>();
   const wanted = new Map<string, OverlayTextStyle>();
   for (const style of styles) {
@@ -58,21 +59,38 @@ async function buildFontBook(pdf: PDFDocument, styles: OverlayStyle[]): Promise<
   for (const [key, slot] of wanted) {
     const entry = FONT_CATALOG[slot.font];
     try {
-      if (!entry.files) {
-        const std = STANDARD_FONTS[slot.font];
-        book.set(key, await pdf.embedFont(slot.bold ? std.bold : std.regular));
-        continue;
-      }
       // Families with no bold cut reuse the regular file — same as the preview,
       // whose @font-face maps 400-700 onto it.
       const file = (slot.bold && entry.files.bold) || entry.files.regular;
-      const bytes = await readFile(path.join(process.cwd(), "public", "fonts", file));
-      book.set(key, await pdf.embedFont(bytes, { subset: entry.files.subset }));
+      book.set(key, await pdf.embedFont(await fontFile(file), { subset: entry.files.subset }));
     } catch {
       book.set(key, fallback);
     }
   }
   return { get: (style) => book.get(fontKey(style)) ?? fallback, fallback };
+}
+
+/**
+ * Text the font is able to write. Embedded fonts substitute a missing glyph, but
+ * a font that cannot *encode* a character throws — and one exotic character in
+ * one card's caption must not cost the whole export. Unencodable characters are
+ * dropped, the rest of the string still prints.
+ */
+function encodable(font: EmbeddedFont, text: string): string {
+  try {
+    font.widthOfTextAtSize(text, 12);
+    return text;
+  } catch {
+    const kept = [...text].filter((ch) => {
+      try {
+        font.widthOfTextAtSize(ch, 12);
+        return true;
+      } catch {
+        return false;
+      }
+    });
+    return kept.join("");
+  }
 }
 
 const CUT_MARK_LEN_MM = 4;
@@ -345,9 +363,9 @@ function drawFace(
       borderColor: rgb(0.7, 0.7, 0.7),
       borderWidth: 0.5,
     });
-    const label = `${name} (${sprite.label})`;
     const size = 9;
     const font = fonts.fallback;
+    const label = encodable(font, `${name} (${sprite.label})`);
     const textWidth = font.widthOfTextAtSize(label, size);
     page.drawText(label, {
       x: x + (w - textWidth) / 2,
@@ -386,7 +404,7 @@ function plateHeight(size: number): number {
 /** One text plate placed by its style within the card box at (x, y, w, h). */
 function plate(
   page: PDFPage,
-  text: string,
+  raw: string,
   style: OverlayTextStyle,
   x: number,
   y: number,
@@ -395,6 +413,8 @@ function plate(
   fonts: FontBook,
 ) {
   const font = fonts.get(style);
+  const text = encodable(font, raw);
+  if (!text) return;
   const size = h * (style.sizePct / 100);
   const padX = size * PLATE_PAD_X_EM;
   const padY = size * PLATE_PAD_Y_EM;
