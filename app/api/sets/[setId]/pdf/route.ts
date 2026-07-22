@@ -11,9 +11,12 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ set
 
   const bytes = await exportSetPdf(setId);
   const filename = `${set.name.replace(/[^a-z0-9-_]+/gi, "_")}.pdf`;
-  return new NextResponse(new Uint8Array(bytes), {
+  // Hand the buffer over as-is — a big set's PDF is tens of MB and copying it
+  // again just to change the view type doubles the peak memory for nothing.
+  return new NextResponse(bytes, {
     headers: {
       "Content-Type": "application/pdf",
+      "Content-Length": String(bytes.byteLength),
       "Content-Disposition": `attachment; filename="${filename}"`,
     },
   });

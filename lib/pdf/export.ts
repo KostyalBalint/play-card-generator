@@ -3,8 +3,8 @@ import path from "node:path";
 import { PDFDocument, PDFImage, PDFPage, rgb, StandardFonts } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import { prisma } from "@/lib/prisma";
-import { readStorageFile } from "@/lib/storage";
-import { coverCrop } from "@/lib/imagecrop";
+import { readStorageFile, writeStorageFile } from "@/lib/storage";
+import { coverCropJpeg } from "@/lib/imagecrop";
 import { sizeForSet } from "@/lib/sizes";
 import { resolveBackFaceId } from "@/lib/faces";
 import { buildBackText } from "@/lib/locations";
@@ -78,7 +78,61 @@ async function buildFontBook(pdf: PDFDocument, styles: OverlayStyle[]): Promise<
 const CUT_MARK_LEN_MM = 4;
 const CUT_MARK_GAP_MM = 0.5;
 
-export async function exportSetPdf(setId: string): Promise<Uint8Array> {
+/**
+ * Resolution the card art is embedded at. 300 dpi is the usual print floor and
+ * keeps a tarot-size card around 830x1420 px; raising it grows the PDF (and the
+ * memory needed to build it) quadratically, so a big set is the reason to leave
+ * it alone. Override with PDF_DPI.
+ */
+const DEFAULT_DPI = 300;
+const MM_PER_INCH = 25.4;
+
+function printDpi(): number {
+  const raw = Number(process.env.PDF_DPI);
+  return Number.isFinite(raw) && raw >= 72 && raw <= 1200 ? raw : DEFAULT_DPI;
+}
+
+const JPEG_QUALITY = 88;
+/** How many faces are cropped/encoded at once — sharp works on its own threads. */
+const RENDER_CONCURRENCY = 4;
+
+/**
+ * The print-ready JPEG for one generated image, cropped to the card aspect and
+ * scaled to the export resolution. Cached on disk: generated images are
+ * immutable (a regeneration writes a new row + file), so the derived file is
+ * valid forever and the second export of a set costs no image work at all. The
+ * key carries every parameter that changes the output.
+ */
+async function printJpeg(
+  imageId: string,
+  sourcePath: string,
+  aspect: number,
+  widthPx: number,
+): Promise<Buffer> {
+  const cachePath = `print-cache/${imageId}-${widthPx}-a${aspect.toFixed(4)}-q${JPEG_QUALITY}.jpg`;
+  try {
+    return await readStorageFile(cachePath);
+  } catch {
+    const jpeg = await coverCropJpeg(await readStorageFile(sourcePath), aspect, widthPx, JPEG_QUALITY);
+    // A failed cache write (read-only volume, full disk) must not fail the export.
+    await writeStorageFile(cachePath, jpeg).catch(() => {});
+    return jpeg;
+  }
+}
+
+/** Run `worker` over `items`, at most `limit` at a time, preserving no order. */
+async function mapPool<T>(items: T[], limit: number, worker: (item: T) => Promise<void>) {
+  let next = 0;
+  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const item = items[next++];
+      await worker(item);
+    }
+  });
+  await Promise.all(runners);
+}
+
+export async function exportSetPdf(setId: string): Promise<Uint8Array<ArrayBuffer>> {
   const set = await prisma.cardSet.findUniqueOrThrow({
     where: { id: setId },
     include: {
@@ -145,6 +199,7 @@ export async function exportSetPdf(setId: string): Promise<Uint8Array> {
     faceIds.add(s.frontFaceId);
     if (s.backFaceId) faceIds.add(s.backFaceId);
   }
+  const targetWidthPx = Math.round((widthMm / MM_PER_INCH) * printDpi());
   const sprites = new Map<string, FaceSprite>();
   // Faces whose label is drawn as a rendered overlay (panorama members), not baked.
   const overlayFaces = new Set<string>();
@@ -154,20 +209,32 @@ export async function exportSetPdf(setId: string): Promise<Uint8Array> {
     where: { id: { in: [...faceIds] } },
     include: { images: true },
   });
+  // Masters are stored uncropped and full size. Crop + downscale each of them
+  // once, a few at a time, and hand pdf-lib the small JPEG — embedding full PNGs
+  // is what used to blow the export's memory up on big sets.
   for (const face of faces) {
     if (face.labelOverlay) overlayFaces.add(face.id);
     overlayStyles.set(face.id, parseOverlayStyle(face.overlayStyle));
+  }
+  const withImage: { faceId: string; imageId: string; filePath: string }[] = [];
+  for (const face of faces) {
     const active = face.images.find(
       (img) => img.id === face.activeImageId && img.status === "DONE" && img.filePath,
     );
     if (active?.filePath) {
-      const bytes = await readStorageFile(active.filePath);
-      // Masters are stored uncropped; cover-crop to the card aspect for print.
-      const cropped = await coverCrop(bytes, widthMm / heightMm);
-      sprites.set(face.id, { kind: "image", image: await pdf.embedPng(cropped) });
+      withImage.push({ faceId: face.id, imageId: active.id, filePath: active.filePath });
     } else {
       sprites.set(face.id, { kind: "placeholder", label: face.title ?? "no image" });
     }
+  }
+  const jpegs = new Map<string, Buffer>();
+  await mapPool(withImage, RENDER_CONCURRENCY, async ({ faceId, imageId, filePath }) => {
+    jpegs.set(faceId, await printJpeg(imageId, filePath, widthMm / heightMm, targetWidthPx));
+  });
+  // embedJpg mutates the document, so it stays on the single main thread.
+  for (const { faceId } of withImage) {
+    sprites.set(faceId, { kind: "image", image: await pdf.embedJpg(jpegs.get(faceId)!) });
+    jpegs.delete(faceId);
   }
 
   const fonts = await buildFontBook(pdf, [...overlayStyles.values(), DEFAULT_OVERLAY_STYLE]);
@@ -215,7 +282,9 @@ export async function exportSetPdf(setId: string): Promise<Uint8Array> {
     drawCutMarks(backPage, chunk.length, grid.backSlots, grid);
   }
 
-  return pdf.save();
+  // pdf-lib types the result as ArrayBufferLike; it is always a plain
+  // ArrayBuffer, and saying so lets the route stream it without a copy.
+  return (await pdf.save()) as Uint8Array<ArrayBuffer>;
 }
 
 function drawFace(
