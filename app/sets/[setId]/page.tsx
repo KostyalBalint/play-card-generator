@@ -10,6 +10,7 @@ import { LocationManager } from "@/components/LocationManager";
 import { MapManager } from "@/components/MapManager";
 import { ItemManager } from "@/components/ItemManager";
 import { CardFacePreview } from "@/components/CardFacePreview";
+import { ExportPdfButton } from "@/components/ExportPdfButton";
 
 export const dynamic = "force-dynamic";
 
@@ -42,12 +43,7 @@ export default async function SetPage({ params }: { params: Promise<{ setId: str
           <h1 className="text-2xl font-bold">{set.name}</h1>
         </div>
         <div className="flex gap-2">
-          <a
-            href={`/api/sets/${set.id}/pdf`}
-            className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500"
-          >
-            Export PDF
-          </a>
+          <ExportPdfButton setId={set.id} />
           <form action={deleteSet.bind(null, set.id)}>
             <button className="rounded-md border border-red-300 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 dark:border-red-900 dark:hover:bg-red-950">
               Delete set

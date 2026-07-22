@@ -27,6 +27,13 @@ enum GenStatus {
   FAILED
 }
 
+enum ExportStatus {
+  PENDING
+  RUNNING
+  DONE
+  FAILED
+}
+
 model CardSet {
   id            String     @id @default(cuid())
   name          String
@@ -45,8 +52,33 @@ model CardSet {
   // fall back to defaultBackId. See lib/faces.resolveBackFaceId.
   itemBackId    String?
   referenceImages ReferenceImage[]
+  exportJobs    ExportJob[]
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
+}
+
+/**
+ * One PDF export of a set, run in the background (see lib/pdf/job). The row is
+ * the only progress channel: the export runs in-process after the POST has
+ * already answered, and the browser polls this row until the file is on disk.
+ */
+model ExportJob {
+  id        String       @id @default(cuid())
+  set       CardSet      @relation(fields: [setId], references: [id], onDelete: Cascade)
+  setId     String
+  status    ExportStatus @default(PENDING)
+  /// Coarse stage shown in the UI: "images" | "embed" | "pages" | "saving".
+  phase     String       @default("images")
+  /// Units finished / total within the current phase — total resets per phase.
+  done      Int          @default(0)
+  total     Int          @default(0)
+  filePath  String?
+  bytes     Int?
+  error     String?
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  @@index([setId, createdAt])
 }
 
 /**

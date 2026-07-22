@@ -1,23 +1,27 @@
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { exportSetPdf } from "@/lib/pdf/export";
+import { jobView, latestExportJob, runExportJob, startExportJob } from "@/lib/pdf/job";
 
-export const maxDuration = 120;
+/**
+ * Exporting a big set takes minutes, so the request only starts the job — the
+ * work runs after the response through `after()`, and the client polls
+ * /api/exports/[jobId]. See lib/pdf/job.
+ */
+export const maxDuration = 3600;
 
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ setId: string }> }) {
+export async function POST(_req: NextRequest, { params }: { params: Promise<{ setId: string }> }) {
   const { setId } = await params;
   const set = await prisma.cardSet.findUnique({ where: { id: setId } });
   if (!set) return NextResponse.json({ error: "Set not found" }, { status: 404 });
 
-  const bytes = await exportSetPdf(setId);
-  const filename = `${set.name.replace(/[^a-z0-9-_]+/gi, "_")}.pdf`;
-  // Hand the buffer over as-is — a big set's PDF is tens of MB and copying it
-  // again just to change the view type doubles the peak memory for nothing.
-  return new NextResponse(bytes, {
-    headers: {
-      "Content-Type": "application/pdf",
-      "Content-Length": String(bytes.byteLength),
-      "Content-Disposition": `attachment; filename="${filename}"`,
-    },
-  });
+  const jobId = await startExportJob(setId);
+  after(() => runExportJob(jobId));
+  return NextResponse.json({ jobId });
+}
+
+/** The set's current (or last) export, so a page reload re-attaches to it. */
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ setId: string }> }) {
+  const { setId } = await params;
+  const job = await latestExportJob(setId);
+  return NextResponse.json(job ? jobView(job) : { status: "NONE" });
 }

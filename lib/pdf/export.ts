@@ -132,7 +132,24 @@ async function mapPool<T>(items: T[], limit: number, worker: (item: T) => Promis
   await Promise.all(runners);
 }
 
-export async function exportSetPdf(setId: string): Promise<Uint8Array<ArrayBuffer>> {
+/**
+ * Where the export currently is. `total` counts the units of the current phase
+ * only and resets when the phase changes — the phases cost wildly different
+ * amounts, so a single global percentage would lie. See lib/pdf/job.
+ */
+export type ExportProgress = {
+  phase: "images" | "embed" | "pages" | "saving";
+  done: number;
+  total: number;
+};
+
+export async function exportSetPdf(
+  setId: string,
+  onProgress?: (progress: ExportProgress) => void,
+): Promise<Uint8Array<ArrayBuffer>> {
+  const report = (phase: ExportProgress["phase"], done: number, total: number) =>
+    onProgress?.({ phase, done, total });
+
   const set = await prisma.cardSet.findUniqueOrThrow({
     where: { id: setId },
     include: {
@@ -228,13 +245,19 @@ export async function exportSetPdf(setId: string): Promise<Uint8Array<ArrayBuffe
     }
   }
   const jpegs = new Map<string, Buffer>();
+  report("images", 0, withImage.length);
+  let rendered = 0;
   await mapPool(withImage, RENDER_CONCURRENCY, async ({ faceId, imageId, filePath }) => {
     jpegs.set(faceId, await printJpeg(imageId, filePath, widthMm / heightMm, targetWidthPx));
+    report("images", ++rendered, withImage.length);
   });
   // embedJpg mutates the document, so it stays on the single main thread.
+  report("embed", 0, withImage.length);
+  let embedded = 0;
   for (const { faceId } of withImage) {
     sprites.set(faceId, { kind: "image", image: await pdf.embedJpg(jpegs.get(faceId)!) });
     jpegs.delete(faceId);
+    report("embed", ++embedded, withImage.length);
   }
 
   const fonts = await buildFontBook(pdf, [...overlayStyles.values(), DEFAULT_OVERLAY_STYLE]);
@@ -242,6 +265,8 @@ export async function exportSetPdf(setId: string): Promise<Uint8Array<ArrayBuffe
   const pageW = mmToPt(A4.widthMm);
   const pageH = mmToPt(A4.heightMm);
 
+  const sheets = Math.ceil(slots.length / grid.perPage);
+  report("pages", 0, sheets);
   for (let start = 0; start < slots.length; start += grid.perPage) {
     const chunk = slots.slice(start, start + grid.perPage);
 
@@ -280,11 +305,15 @@ export async function exportSetPdf(setId: string): Promise<Uint8Array<ArrayBuffe
       );
     });
     drawCutMarks(backPage, chunk.length, grid.backSlots, grid);
+    report("pages", start / grid.perPage + 1, sheets);
   }
 
+  report("saving", 0, 1);
   // pdf-lib types the result as ArrayBufferLike; it is always a plain
   // ArrayBuffer, and saying so lets the route stream it without a copy.
-  return (await pdf.save()) as Uint8Array<ArrayBuffer>;
+  const bytes = (await pdf.save()) as Uint8Array<ArrayBuffer>;
+  report("saving", 1, 1);
+  return bytes;
 }
 
 function drawFace(
