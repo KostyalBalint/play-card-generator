@@ -22,7 +22,15 @@ import {
   type OverlayStyle,
   type OverlayTextStyle,
 } from "@/lib/overlaystyle";
-import { A4, computeGrid, Grid, mmToPt, Slot } from "./grid";
+import {
+  A4,
+  computeGrid,
+  CUT_MARK_GAP_MM,
+  CUT_MARK_LEN_MM,
+  Grid,
+  mmToPt,
+  Slot,
+} from "./grid";
 
 type FaceSprite =
   | { kind: "image"; image: PDFImage }
@@ -92,9 +100,6 @@ function encodable(font: EmbeddedFont, text: string): string {
     return kept.join("");
   }
 }
-
-const CUT_MARK_LEN_MM = 4;
-const CUT_MARK_GAP_MM = 0.5;
 
 /**
  * Resolution the card art is embedded at. 300 dpi is the usual print floor and
@@ -176,7 +181,7 @@ export async function exportSetPdf(
   });
 
   const { widthMm, heightMm } = sizeForSet(set);
-  const grid = computeGrid(widthMm, heightMm);
+  const grid = computeGrid(widthMm, heightMm, set.fitToPage);
 
   // Group contiguously by tier: located cards (by location/card order), then maps
   // (by map order), then items (by number), then loose cards.
@@ -234,7 +239,10 @@ export async function exportSetPdf(
     faceIds.add(s.frontFaceId);
     if (s.backFaceId) faceIds.add(s.backFaceId);
   }
-  const targetWidthPx = Math.round((widthMm / MM_PER_INCH) * printDpi());
+  // Sized from the printed width, not the nominal one: a fit-to-page sheet draws
+  // the card larger, and reusing the nominal width would quietly print at a
+  // lower effective dpi.
+  const targetWidthPx = Math.round((grid.cardWidthMm / MM_PER_INCH) * printDpi());
   const sprites = new Map<string, FaceSprite>();
   // Faces whose label is drawn as a rendered overlay (panorama members), not baked.
   const overlayFaces = new Set<string>();

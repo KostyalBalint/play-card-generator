@@ -43,6 +43,9 @@ model CardSet {
   sizePreset    SizePreset @default(TAROT)
   widthMm       Float      @default(70)
   heightMm      Float      @default(120)
+  // Print the cards as large as the sheet allows instead of at their nominal
+  // size, keeping the aspect and the same cards-per-sheet. See lib/pdf/grid.
+  fitToPage     Boolean    @default(false)
   cards         Card[]
   locations     Location[]
   maps          Map[]

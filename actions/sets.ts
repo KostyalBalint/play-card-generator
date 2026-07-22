@@ -14,6 +14,7 @@ const setSchema = z.object({
   sizePreset: z.enum(["POKER", "TAROT", "IMAGE_2_3", "CUSTOM"]).default("TAROT"),
   widthMm: z.coerce.number().positive().max(200).default(70),
   heightMm: z.coerce.number().positive().max(287).default(120),
+  fitToPage: z.preprocess((v) => v === "on" || v === "true" || v === true, z.boolean()),
 });
 
 function sizeFields(data: z.infer<typeof setSchema>) {
@@ -30,6 +31,7 @@ export async function createSet(formData: FormData) {
       stylePrompt: data.stylePrompt,
       showNumbers: data.showNumbers,
       sizePreset: data.sizePreset,
+      fitToPage: data.fitToPage,
       ...sizeFields(data),
     },
   });
@@ -46,6 +48,7 @@ export async function updateSet(setId: string, formData: FormData) {
       stylePrompt: data.stylePrompt,
       showNumbers: data.showNumbers,
       sizePreset: data.sizePreset,
+      fitToPage: data.fitToPage,
       ...sizeFields(data),
     },
   });
