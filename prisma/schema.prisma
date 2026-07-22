@@ -41,6 +41,9 @@ model CardSet {
   maps          Map[]
   sharedBacks   CardFace[] @relation("SetSharedBacks")
   defaultBackId String?
+  // Which shared back item cards use (their number is overlaid on it). Null =
+  // fall back to defaultBackId. See lib/faces.resolveBackFaceId.
+  itemBackId    String?
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
 }

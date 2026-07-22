@@ -38,6 +38,7 @@ export async function deleteSharedBack(setId: string, faceId: string) {
   await prisma.$transaction([
     prisma.card.updateMany({ where: { backFaceId: { in: ids } }, data: { backFaceId: null } }),
     prisma.cardSet.updateMany({ where: { id: setId, defaultBackId: { in: ids } }, data: { defaultBackId: null } }),
+    prisma.cardSet.updateMany({ where: { id: setId, itemBackId: { in: ids } }, data: { itemBackId: null } }),
     prisma.cardFace.deleteMany({ where: { id: { in: ids } } }),
   ]);
   revalidatePath(`/sets/${setId}`);

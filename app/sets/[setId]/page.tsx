@@ -82,10 +82,18 @@ export default async function SetPage({ params }: { params: Promise<{ setId: str
       <section className="space-y-3">
         <h2 className="font-semibold">Items</h2>
         <p className="text-xs text-zinc-400">
-          A flat group of cards numbered on the back. Each item&apos;s front is built like any card; its
-          back is the set&apos;s default shared back with the item number drawn over it.
+          A flat group of cards numbered on the back. Each item&apos;s front is built like any card; all
+          items share one back from the card backs pack, with the item number drawn over it.
         </p>
-        <ItemManager setId={set.id} items={items} widthMm={widthMm} heightMm={heightMm} />
+        <ItemManager
+          setId={set.id}
+          items={items}
+          sharedBacks={set.sharedBacks}
+          itemBackId={set.itemBackId}
+          defaultBackId={set.defaultBackId}
+          widthMm={widthMm}
+          heightMm={heightMm}
+        />
       </section>
 
       <section className="space-y-3">

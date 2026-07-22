@@ -6,8 +6,9 @@ import { prisma } from "@/lib/prisma";
 
 /**
  * Item cards are loose cards grouped in the set's flat Items section. They reuse
- * the generic card editor for their front; their back is the set's default
- * shared back with the item number drawn as a rendered overlay (lib/overlay).
+ * the generic card editor for their front; their back is one shared back picked
+ * for the whole section (CardSet.itemBackId, else the set default) with the item
+ * number drawn as a rendered overlay (lib/overlay).
  */
 export async function createItem(setId: string, formData: FormData) {
   const name = String(formData.get("name") ?? "").trim() || "New item";
@@ -27,6 +28,19 @@ export async function createItem(setId: string, formData: FormData) {
     },
   });
   redirect(`/sets/${setId}/cards/${card.id}`);
+}
+
+/**
+ * Choose which shared back all item cards use; null falls back to the set's
+ * default back. Variants count as backs, so items can take a "pack" member.
+ */
+export async function setItemBack(setId: string, faceId: string | null) {
+  if (faceId) {
+    const face = await prisma.cardFace.findUniqueOrThrow({ where: { id: faceId } });
+    if (face.sharedBackSetId !== setId) throw new Error("Back does not belong to this set");
+  }
+  await prisma.cardSet.update({ where: { id: setId }, data: { itemBackId: faceId } });
+  revalidatePath(`/sets/${setId}`);
 }
 
 /** Renumber items 1..N by the given order (numbers are overlaid live — no image work). */

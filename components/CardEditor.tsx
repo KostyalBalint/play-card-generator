@@ -131,8 +131,9 @@ export function CardEditor({
               <p className="text-sm text-zinc-400">This map card has no back design yet.</p>
             )
           ) : card.isItem ? (
-            // Items always use the set's default shared back; the item number is
-            // drawn over it as a rendered overlay (not baked, not editable here).
+            // Items all use the set's chosen item back (else the default one); the
+            // item number is drawn over it as a rendered overlay (not baked, not
+            // editable here).
             back ? (
               <FaceForm
                 key={back.id}
@@ -140,13 +141,13 @@ export function CardEditor({
                 widthMm={widthMm}
                 heightMm={heightMm}
                 readOnly
-                readOnlyNote="Items share the set's default back. The item number is drawn over it automatically — set it in the “Item number” field above, or change the default back on the set page."
+                readOnlyNote="All items share one back, picked in the Items section of the set page. The item number is drawn over it automatically — set it in the “Item number” field above."
                 overlay={card.number != null ? { label: String(card.number), caption: null } : null}
               />
             ) : (
               <p className="text-sm text-zinc-400">
-                The set has no default back yet — add one on the set page and it becomes this item&apos;s
-                back, with the item number overlaid.
+                No item back yet — add a shared back on the set page and pick it in the Items section;
+                the item number is overlaid on it.
               </p>
             )
           ) : (

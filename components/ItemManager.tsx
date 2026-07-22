@@ -3,9 +3,9 @@
 import { useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { createItem, reorderItems } from "@/actions/items";
+import { createItem, reorderItems, setItemBack } from "@/actions/items";
 import { CardFacePreview } from "./CardFacePreview";
-import type { Card } from "@/lib/types";
+import type { Card, FaceWithImages } from "@/lib/types";
 
 const inputCls =
   "rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900";
@@ -15,11 +15,18 @@ type ItemCard = Card & { front: { activeImageId: string | null } };
 export function ItemManager({
   setId,
   items,
+  sharedBacks,
+  itemBackId,
+  defaultBackId,
   widthMm,
   heightMm,
 }: {
   setId: string;
   items: ItemCard[];
+  sharedBacks: FaceWithImages[];
+  /** Shared back chosen for items; null = the set default. */
+  itemBackId: string | null;
+  defaultBackId: string | null;
   widthMm: number;
   heightMm: number;
 }) {
@@ -41,8 +48,54 @@ export function ItemManager({
     });
   }
 
+  const backLabel = (b: FaceWithImages) => {
+    const base = b.basedOnFaceId ? sharedBacks.find((s) => s.id === b.basedOnFaceId) : null;
+    return b.variantLabel
+      ? `${base?.title ?? b.title ?? "Back"} – ${b.variantLabel}`
+      : b.title ?? b.id.slice(0, 6);
+  };
+  const effectiveBack =
+    sharedBacks.find((b) => b.id === itemBackId) ??
+    sharedBacks.find((b) => b.id === defaultBackId) ??
+    null;
+
   return (
     <div className="space-y-3">
+      <div className="flex items-center gap-3 rounded-xl border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
+        <div className="w-16 shrink-0">
+          <CardFacePreview
+            activeImageId={effectiveBack?.activeImageId ?? null}
+            widthMm={widthMm}
+            heightMm={heightMm}
+            label={effectiveBack ? backLabel(effectiveBack) : "no back"}
+          />
+        </div>
+        <div className="space-y-1">
+          <label className="block text-xs font-medium text-zinc-500">Item back</label>
+          <select
+            className={inputCls}
+            value={itemBackId ?? "__default"}
+            onChange={(e) => {
+              const v = e.target.value;
+              startTransition(async () => {
+                await setItemBack(setId, v === "__default" ? null : v);
+                router.refresh();
+              });
+            }}
+          >
+            <option value="__default">Set default back</option>
+            {sharedBacks.map((b) => (
+              <option key={b.id} value={b.id}>
+                {backLabel(b)}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-zinc-400">
+            Every item shares this back, with its number drawn over it.
+          </p>
+        </div>
+      </div>
+
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
         {ordered.map((item, i) => (
           <div key={item.id} className="group space-y-1.5">

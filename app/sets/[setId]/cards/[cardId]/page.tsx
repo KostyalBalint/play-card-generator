@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { sizeForSet } from "@/lib/sizes";
+import { resolveBackFaceId } from "@/lib/faces";
 import { deleteCard } from "@/actions/cards";
 import { CardEditor } from "@/components/CardEditor";
 
@@ -43,8 +44,9 @@ export default async function CardPage({
 
   const { set } = card;
   const { widthMm, heightMm } = sizeForSet(set);
-  // Effective back: explicit per-card back, else the set's default shared back
-  const back = card.back ?? set.sharedBacks.find((b) => b.id === set.defaultBackId) ?? null;
+  // Effective back: explicit per-card back, else the set's item/default shared back
+  const backFaceId = resolveBackFaceId(card, set);
+  const back = card.back ?? set.sharedBacks.find((b) => b.id === backFaceId) ?? null;
 
   // Item fronts can be generated against another card's art (same flow as
   // "match back side"), so an item's look can follow the card it belongs to.
