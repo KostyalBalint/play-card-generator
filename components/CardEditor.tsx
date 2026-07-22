@@ -20,6 +20,7 @@ export function CardEditor({
   back,
   sharedBacks,
   referenceCards = [],
+  allowReferenceUpload = false,
   widthMm,
   heightMm,
 }: {
@@ -31,6 +32,8 @@ export function CardEditor({
   sharedBacks: FaceWithImages[];
   /** Other cards in the set whose front art can seed this front's generation. */
   referenceCards?: ReferenceCard[];
+  /** Show the "upload a reference picture" control on the front face. */
+  allowReferenceUpload?: boolean;
   widthMm: number;
   heightMm: number;
 }) {
@@ -114,6 +117,7 @@ export function CardEditor({
               onDraftChange={setFrontDraft}
               backReferenceImageId={back?.activeImageId ?? null}
               referenceCards={referenceCards}
+              uploadSetId={allowReferenceUpload ? set.id : null}
             />
           ) : card.mapId ? (
             // All of a map's cards share the map's one back face — editing it here

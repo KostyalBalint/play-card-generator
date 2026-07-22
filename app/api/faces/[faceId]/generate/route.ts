@@ -23,6 +23,10 @@ function apiImageSize(widthMm: number, heightMm: number): "1024x1024" | "1024x15
   return "1024x1024";
 }
 
+function referenceKind(kind: string | undefined): ReferenceKind {
+  return kind === "card" || kind === "upload" ? kind : "back";
+}
+
 async function faceContext(faceId: string) {
   const face = await prisma.cardFace.findUnique({
     where: { id: faceId },
@@ -67,6 +71,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ fac
   // The plain-generate client sends no body at all — req.json() would throw.
   let body: {
     referenceImageId?: string;
+    /** An uploaded picture (ReferenceImage) instead of generated art — face-prompt mode only. */
+    referenceUploadId?: string;
     alterPrompt?: string;
     useFacePrompt?: boolean;
     alterText?: boolean;
@@ -79,13 +85,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ fac
     // no body — plain generation
   }
 
-  let reference: { id: string; png: Buffer } | null = null;
-  if (body.referenceImageId) {
+  // sourceImageId only tracks generated art; an uploaded reference has none.
+  let reference: { sourceImageId: string | null; png: Buffer } | null = null;
+  if (body.referenceImageId || body.referenceUploadId) {
     // Reference modes: alter (free-text instruction), face-prompt (full front prompt
     // for visual consistency), or text-alter (bake the face's title/body onto the image).
     if (!body.useFacePrompt && !body.alterText && !body.alterPrompt?.trim()) {
       return NextResponse.json({ error: "alterPrompt is required in edit mode" }, { status: 400 });
     }
+  }
+  if (body.referenceUploadId) {
+    const upload = await prisma.referenceImage.findUnique({ where: { id: body.referenceUploadId } });
+    if (!upload?.filePath) {
+      return NextResponse.json({ error: "Uploaded reference not found" }, { status: 400 });
+    }
+    if (upload.setId !== set.id) {
+      return NextResponse.json({ error: "Reference image belongs to a different set" }, { status: 400 });
+    }
+    reference = { sourceImageId: null, png: await readStorageFile(upload.filePath) };
+  } else if (body.referenceImageId) {
     const refImage = await prisma.generatedImage.findUnique({
       where: { id: body.referenceImageId },
       include: {
@@ -115,19 +133,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ fac
     if (refSetId !== set.id) {
       return NextResponse.json({ error: "Reference image belongs to a different set" }, { status: 400 });
     }
-    reference = { id: refImage.id, png: await readStorageFile(refImage.filePath) };
+    reference = { sourceImageId: refImage.id, png: await readStorageFile(refImage.filePath) };
   }
 
   const resolvedPrompt = reference
     ? body.alterText
       ? buildTextAlterPrompt(face, set)
       : body.useFacePrompt
-        ? buildPromptWithReference(
-            face,
-            set,
-            cardNumber,
-            body.referenceKind === "card" ? "card" : "back",
-          )
+        ? buildPromptWithReference(face, set, cardNumber, referenceKind(body.referenceKind))
         : buildEditPrompt(body.alterPrompt!, set)
     : buildImagePrompt(
         face,
@@ -139,7 +152,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ fac
       );
 
   const record = await prisma.generatedImage.create({
-    data: { faceId, status: "PENDING", resolvedPrompt, sourceImageId: reference?.id ?? null },
+    data: { faceId, status: "PENDING", resolvedPrompt, sourceImageId: reference?.sourceImageId ?? null },
   });
 
   try {

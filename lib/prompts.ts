@@ -116,12 +116,13 @@ function round1(n: number) {
 }
 
 /** Where a face-prompt reference image came from — the wording differs. */
-export type ReferenceKind = "back" | "card";
+export type ReferenceKind = "back" | "card" | "upload";
 
 /**
  * Front face generated using its own full prompt, but with a reference image
- * supplied so the art stays visually consistent: either the card's own back
- * (same card, other side) or another card's front (same world, other subject).
+ * supplied so the art stays visually consistent: the card's own back (same card,
+ * other side), another card's front (same world, other subject) or a picture the
+ * user uploaded (a real thing to depict, in the deck's style).
  */
 export function buildPromptWithReference(
   face: Pick<CardFace, "textLayout" | "title" | "bodyText" | "imagePrompt">,
@@ -131,7 +132,12 @@ export function buildPromptWithReference(
 ) {
   return [
     buildImagePrompt(face, set, cardNumber),
-    kind === "card"
+    kind === "upload"
+      ? "A reference image is provided: a picture supplied by the user of the subject to depict. Use it for " +
+        "the subject's shape, colours, markings and distinguishing details, but redraw it in the deck's art " +
+        "style described above rather than reproducing the photo. Follow the description above for the " +
+        "composition, and do not copy any text, background or layout from the reference."
+      : kind === "card"
       ? "A reference image is provided: the art of another card from the same deck. Match its art style, " +
         "colour palette, lighting and world — and keep any character, object or place it shares with the " +
         "description above looking like the same one. Depict the subject described above, not the " +

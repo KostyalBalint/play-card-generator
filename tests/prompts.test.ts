@@ -26,6 +26,15 @@ test("card reference asks for the deck's look but this face's subject", () => {
   assert.match(p, /rusted oil lantern/);
 });
 
+test("upload reference redraws the user's picture in the deck style", () => {
+  const p = buildPromptWithReference(FACE, SET, null, "upload");
+  assert.match(p, /supplied by the user/);
+  assert.match(p, /redraw it in the deck's art style/);
+  assert.doesNotMatch(p, /another card from the same deck|side\/scene of the same card/);
+  assert.match(p, /rusted oil lantern/);
+  assert.match(p, /grim 1920s noir/);
+});
+
 test("kind defaults to back so existing calls are unchanged", () => {
   assert.equal(buildPromptWithReference(FACE, SET, null), buildPromptWithReference(FACE, SET, null, "back"));
 });

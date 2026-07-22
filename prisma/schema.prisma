@@ -44,8 +44,25 @@ model CardSet {
   // Which shared back item cards use (their number is overlaid on it). Null =
   // fall back to defaultBackId. See lib/faces.resolveBackFaceId.
   itemBackId    String?
+  referenceImages ReferenceImage[]
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
+}
+
+/**
+ * A picture uploaded by the user (not generated) to seed generation, exactly
+ * like referencing another card's front art. Set-scoped and never printed on a
+ * card itself. Served by /api/references/[refId].
+ */
+model ReferenceImage {
+  id        String   @id @default(cuid())
+  set       CardSet  @relation(fields: [setId], references: [id], onDelete: Cascade)
+  setId     String
+  name      String
+  filePath  String
+  widthPx   Int?
+  heightPx  Int?
+  createdAt DateTime @default(now())
 }
 
 model Location {

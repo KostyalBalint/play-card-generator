@@ -26,6 +26,21 @@ async function siblingFronts(setId: string, cardId: string) {
   }));
 }
 
+/** Pictures uploaded to the set, offered in the same picker as sibling card art. */
+async function uploadedReferences(setId: string) {
+  const uploads = await prisma.referenceImage.findMany({
+    where: { setId, filePath: { not: "" } },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, name: true },
+  });
+  return uploads.map((u) => ({
+    id: `upload:${u.id}`,
+    imageId: u.id,
+    label: u.name,
+    kind: "upload" as const,
+  }));
+}
+
 export default async function CardPage({
   params,
 }: {
@@ -49,8 +64,11 @@ export default async function CardPage({
   const back = card.back ?? set.sharedBacks.find((b) => b.id === backFaceId) ?? null;
 
   // Item fronts can be generated against another card's art (same flow as
-  // "match back side"), so an item's look can follow the card it belongs to.
-  const referenceCards = card.isItem ? await siblingFronts(setId, cardId) : [];
+  // "match back side") or an uploaded picture of the item itself, so an item's
+  // look can follow the card it belongs to — or a real object.
+  const referenceCards = card.isItem
+    ? [...(await uploadedReferences(setId)), ...(await siblingFronts(setId, cardId))]
+    : [];
 
   return (
     <main className="mx-auto w-full max-w-6xl space-y-6 p-8">
@@ -78,6 +96,7 @@ export default async function CardPage({
         back={back}
         sharedBacks={set.sharedBacks}
         referenceCards={referenceCards}
+        allowReferenceUpload={card.isItem}
         widthMm={widthMm}
         heightMm={heightMm}
       />

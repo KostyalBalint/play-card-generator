@@ -14,8 +14,21 @@ const inputCls =
   "w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900";
 const labelCls = "block text-xs font-medium text-zinc-500 dark:text-zinc-400";
 
-/** A card whose front art can seed another face's generation. */
-export type ReferenceCard = { id: string; label: string; imageId: string };
+/**
+ * Art that can seed another face's generation: another card's front, or a
+ * picture the user uploaded to the set (kind "upload", imageId = ReferenceImage id).
+ */
+export type ReferenceCard = {
+  id: string;
+  label: string;
+  imageId: string;
+  kind?: "card" | "upload";
+};
+
+/** Where a reference thumbnail is served from — uploads live outside GeneratedImage. */
+function refSrc(ref: ReferenceCard) {
+  return ref.kind === "upload" ? `/api/references/${ref.imageId}` : `/api/images/${ref.imageId}`;
+}
 
 export function FaceForm({
   face,
@@ -29,6 +42,7 @@ export function FaceForm({
   defaultAlterPrompt = "",
   backReferenceImageId = null,
   referenceCards = [],
+  uploadSetId = null,
   overlay = null,
   saveLabel = "Save",
 }: {
@@ -46,6 +60,8 @@ export function FaceForm({
   backReferenceImageId?: string | null;
   /** Other cards whose front art can be used as a reference — same flow as "match back side". */
   referenceCards?: ReferenceCard[];
+  /** Set to upload new reference pictures into — null hides the upload control. */
+  uploadSetId?: string | null;
   /** Rendered (not baked) label + caption drawn over the preview — see lib/overlay. */
   overlay?: FaceOverlay | null;
   /** Label for the plain (no-regen) save button. */
@@ -58,6 +74,11 @@ export function FaceForm({
   const [alterPrompt, setAlterPrompt] = useState(defaultAlterPrompt);
   const [matchBack, setMatchBack] = useState(false);
   const [refCardId, setRefCardId] = useState("");
+  // Just-uploaded references, so the picker can select one before the server
+  // component re-renders with it in referenceCards.
+  const [uploaded, setUploaded] = useState<ReferenceCard[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
   const draft = controlledDraft ?? internalDraft;
   const setDraft = onDraftChange ?? setInternalDraft;
 
@@ -98,26 +119,32 @@ export function FaceForm({
 
   async function generate(opts?: {
     referenceImageId?: string;
+    /** An uploaded picture instead of generated art — mutually exclusive with referenceImageId. */
+    referenceUploadId?: string;
     useFacePrompt?: boolean;
     alterText?: boolean;
-    referenceKind?: "back" | "card";
+    referenceKind?: "back" | "card" | "upload";
   }) {
     setGenError(null);
     setGenerating(true);
     try {
       await updateFace(face.id, draft);
-      const referenceImageId = opts?.referenceImageId;
+      const ref = opts?.referenceUploadId
+        ? { referenceUploadId: opts.referenceUploadId }
+        : opts?.referenceImageId
+          ? { referenceImageId: opts.referenceImageId }
+          : null;
       const res = await fetch(`/api/faces/${face.id}/generate`, {
         method: "POST",
-        ...(referenceImageId
+        ...(ref
           ? {
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify(
                 opts?.alterText
-                  ? { referenceImageId, alterText: true }
+                  ? { ...ref, alterText: true }
                   : opts?.useFacePrompt
-                    ? { referenceImageId, useFacePrompt: true, referenceKind: opts.referenceKind ?? "back" }
-                    : { referenceImageId, alterPrompt },
+                    ? { ...ref, useFacePrompt: true, referenceKind: opts.referenceKind ?? "back" }
+                    : { ...ref, alterPrompt },
               ),
             }
           : {}),
@@ -132,17 +159,53 @@ export function FaceForm({
     }
   }
 
+  async function uploadReference(file: File) {
+    if (!uploadSetId) return;
+    setGenError(null);
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(`/api/sets/${uploadSetId}/references`, { method: "POST", body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Upload failed");
+      const ref: ReferenceCard = {
+        id: `upload:${data.id}`,
+        label: data.name,
+        imageId: data.id,
+        kind: "upload",
+      };
+      setUploaded((prev) => [ref, ...prev]);
+      setRefCardId(ref.id);
+      router.refresh();
+    } catch (err) {
+      setGenError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }
+
   const refImageId = face.activeImageId ?? defaultReferenceImageId;
   // The overlay's placement + look ride on the face itself — see lib/overlaystyle.
   const overlayStyle = parseOverlayStyle(face.overlayStyle);
 
   const doneImages = face.images.filter((img) => img.status === "DONE");
 
-  // Reference for the main Generate: a picked card's front wins over the card's
-  // own back — both take the same "own prompt + reference image" path.
-  const refCard = referenceCards.find((c) => c.id === refCardId) ?? null;
+  // Uploads made in this session may already be in referenceCards after a refresh.
+  const allRefs = [
+    ...uploaded.filter((u) => !referenceCards.some((c) => c.id === u.id)),
+    ...referenceCards,
+  ];
+
+  // Reference for the main Generate: a picked reference (card art or uploaded
+  // picture) wins over the card's own back — all take the same "own prompt +
+  // reference image" path.
+  const refCard = allRefs.find((c) => c.id === refCardId) ?? null;
   const genRef = refCard
-    ? { referenceImageId: refCard.imageId, useFacePrompt: true, referenceKind: "card" as const }
+    ? refCard.kind === "upload"
+      ? { referenceUploadId: refCard.imageId, useFacePrompt: true, referenceKind: "upload" as const }
+      : { referenceImageId: refCard.imageId, useFacePrompt: true, referenceKind: "card" as const }
     : matchBack && backReferenceImageId
       ? { referenceImageId: backReferenceImageId, useFacePrompt: true, referenceKind: "back" as const }
       : undefined;
@@ -274,28 +337,44 @@ export function FaceForm({
                 Match back side — use the card&apos;s back image as a visual reference (same character/scene/style)
               </label>
             )}
-            {referenceCards.length > 0 && (
+            {(allRefs.length > 0 || uploadSetId) && (
               <div className="flex items-center gap-2">
-                <label className="flex-1 text-xs text-zinc-600 dark:text-zinc-300">
-                  Reference card — generate from this face&apos;s prompt with another card&apos;s art as a
-                  visual reference (style, palette, world)
-                  <select
-                    className={`${inputCls} mt-1`}
-                    value={refCardId}
-                    onChange={(e) => setRefCardId(e.target.value)}
-                  >
-                    <option value="">No reference card</option>
-                    {referenceCards.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <div className="flex-1 space-y-1">
+                  <label className="block text-xs text-zinc-600 dark:text-zinc-300">
+                    Reference image — generate from this face&apos;s prompt with another card&apos;s art or an
+                    uploaded picture as a visual reference
+                    <select
+                      className={`${inputCls} mt-1`}
+                      value={refCardId}
+                      onChange={(e) => setRefCardId(e.target.value)}
+                    >
+                      <option value="">No reference image</option>
+                      {allRefs.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.kind === "upload" ? `Upload: ${c.label}` : c.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {uploadSetId && (
+                    <input
+                      ref={fileRef}
+                      type="file"
+                      accept="image/*"
+                      disabled={uploading || generating}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) uploadReference(file);
+                      }}
+                      className="block w-full text-xs text-zinc-500 file:mr-2 file:rounded-md file:border file:border-zinc-300 file:bg-transparent file:px-2 file:py-1 file:text-xs file:text-zinc-700 disabled:opacity-50 dark:file:border-zinc-700 dark:file:text-zinc-200"
+                    />
+                  )}
+                  {uploading && <p className="text-xs text-zinc-500">Uploading…</p>}
+                </div>
                 {refCard && (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
-                    src={`/api/images/${refCard.imageId}`}
+                    src={refSrc(refCard)}
                     alt={refCard.label}
                     className="h-16 w-12 shrink-0 self-end rounded border border-zinc-300 object-cover dark:border-zinc-700"
                   />
@@ -319,7 +398,13 @@ export function FaceForm({
                 {generating
                   ? "Generating…"
                   : `${face.activeImageId ? "Regenerate" : "Generate"} ${
-                      refCard ? "from card" : genRef ? "from back" : "image"
+                      refCard
+                        ? refCard.kind === "upload"
+                          ? "from upload"
+                          : "from card"
+                        : genRef
+                          ? "from back"
+                          : "image"
                     }`}
               </button>
               {face.activeImageId && (
