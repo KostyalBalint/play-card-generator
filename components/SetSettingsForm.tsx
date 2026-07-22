@@ -106,6 +106,21 @@ export function SetSettingsForm({ set }: { set: CardSet }) {
           </span>
         </span>
       </label>
+      <label className="flex items-start gap-2 text-sm">
+        <input
+          type="checkbox"
+          name="exportIndex"
+          defaultChecked={set.exportIndex}
+          className="mt-0.5 h-4 w-4 rounded border-zinc-300"
+        />
+        <span>
+          Number the cards at export
+          <span className="mt-0.5 block text-xs text-zinc-400">
+            Small running index in the bottom-right corner of each card back, counted in print
+            order: maps, then items, then each location A → N. Copies of a card share its number.
+          </span>
+        </span>
+      </label>
       <button className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800">
         Save settings
       </button>

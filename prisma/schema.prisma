@@ -46,6 +46,9 @@ model CardSet {
   // Print the cards as large as the sheet allows instead of at their nominal
   // size, keeping the aspect and the same cards-per-sheet. See lib/pdf/grid.
   fitToPage     Boolean    @default(false)
+  // Print a small running index in the bottom-right corner of every card back,
+  // numbered in export order (maps, items, locations). See lib/pdf/export.
+  exportIndex   Boolean    @default(false)
   cards         Card[]
   locations     Location[]
   maps          Map[]

@@ -31,6 +31,7 @@ import {
   mmToPt,
   Slot,
 } from "./grid";
+import { orderCardsForExport } from "./order";
 
 type FaceSprite =
   | { kind: "image"; image: PDFImage }
@@ -115,6 +116,19 @@ function printDpi(): number {
   return Number.isFinite(raw) && raw >= 72 && raw <= 1200 ? raw : DEFAULT_DPI;
 }
 
+/**
+ * Look of the running index drawn on every card back. Deliberately not part of
+ * the per-face overlay style: it is a print aid for sorting the deck back into
+ * order, not artwork, so it must look the same on every back in every set. Same
+ * plate as the default caption, smaller and pinned to the bottom-right — clear
+ * of the bottom-centre caption panorama slices use.
+ */
+const INDEX_STYLE: OverlayTextStyle = {
+  ...DEFAULT_OVERLAY_STYLE.caption,
+  anchor: "bottom-right",
+  sizePct: 3,
+};
+
 const JPEG_QUALITY = 88;
 /** How many faces are cropped/encoded at once — sharp works on its own threads. */
 const RENDER_CONCURRENCY = 4;
@@ -183,22 +197,8 @@ export async function exportSetPdf(
   const { widthMm, heightMm } = sizeForSet(set);
   const grid = computeGrid(widthMm, heightMm, set.fitToPage);
 
-  // Group contiguously by tier: located cards (by location/card order), then maps
-  // (by map order), then items (by number), then loose cards.
-  const tier = (c: (typeof set.cards)[number]) => (c.location ? 0 : c.map ? 1 : c.isItem ? 2 : 3);
-  const ordered = [...set.cards].sort((a, b) => {
-    const ta = tier(a);
-    const tb = tier(b);
-    if (ta !== tb) return ta - tb;
-    if (ta === 0 && a.location && b.location && a.location.orderIndex !== b.location.orderIndex) {
-      return a.location.orderIndex - b.location.orderIndex;
-    }
-    if (ta === 1 && a.map && b.map && a.map.orderIndex !== b.map.orderIndex) {
-      return a.map.orderIndex - b.map.orderIndex;
-    }
-    if (ta === 2) return (a.number ?? 0) - (b.number ?? 0) || a.orderIndex - b.orderIndex;
-    return a.orderIndex - b.orderIndex;
-  });
+  // Maps, then items, then the located cards, then loose ones — see lib/pdf/order.
+  const ordered = orderCardsForExport(set.cards);
 
   // Expand copies into a flat list of {frontFaceId, backFaceId|null, backLabel}
   const slots: {
@@ -210,9 +210,15 @@ export async function exportSetPdf(
     cardOverlay: FaceOverlay | null;
     isItem: boolean;
     number: number | null;
+    /** Running index printed on the back, or null when the set has it off. */
+    index: number | null;
   }[] = [];
+  let runningIndex = 0;
   for (const card of ordered) {
     const backFaceId = resolveBackFaceId(card, set);
+    // One index per card, not per copy: it names the card, and every copy of it
+    // is the same card.
+    const index = set.exportIndex ? ++runningIndex : null;
     const backLabel = buildBackText(card) || null;
     // labelOverlay on the card itself → drawn over whatever back it uses.
     const cardOverlay = card.labelOverlay
@@ -227,6 +233,7 @@ export async function exportSetPdf(
         cardOverlay,
         isItem: card.isItem,
         number: card.number,
+        index,
       });
     }
   }
@@ -286,7 +293,11 @@ export async function exportSetPdf(
     report("embed", ++embedded, withImage.length);
   }
 
-  const fonts = await buildFontBook(pdf, [...overlayStyles.values(), DEFAULT_OVERLAY_STYLE]);
+  const fonts = await buildFontBook(pdf, [
+    ...overlayStyles.values(),
+    DEFAULT_OVERLAY_STYLE,
+    { label: INDEX_STYLE, caption: INDEX_STYLE },
+  ]);
 
   const pageW = mmToPt(A4.widthMm);
   const pageH = mmToPt(A4.heightMm);
@@ -328,6 +339,7 @@ export async function exportSetPdf(
         slot.name,
         overlay,
         (slot.backFaceId && overlayStyles.get(slot.backFaceId)) || DEFAULT_OVERLAY_STYLE,
+        slot.index != null ? String(slot.index) : null,
       );
     });
     drawCutMarks(backPage, chunk.length, grid.backSlots, grid);
@@ -351,6 +363,7 @@ function drawFace(
   name: string,
   overlay: FaceOverlay | null = null,
   overlayStyle: OverlayStyle = DEFAULT_OVERLAY_STYLE,
+  index: string | null = null,
 ) {
   const x = mmToPt(slot.xMm);
   // pdf-lib origin is bottom-left; slot coords are top-left mm
@@ -383,6 +396,9 @@ function drawFace(
       color: rgb(0.4, 0.4, 0.4),
     });
   }
+  // Drawn last, over image and placeholder alike — a missing back image is
+  // exactly when knowing which card the slot is stays useful.
+  if (index) plate(page, index, INDEX_STYLE, x, y, w, h, fonts);
 }
 
 /**
