@@ -7,6 +7,24 @@ import { CardEditor } from "@/components/CardEditor";
 
 export const dynamic = "force-dynamic";
 
+/** Every other card in the set that has a generated front, labelled for a picker. */
+async function siblingFronts(setId: string, cardId: string) {
+  const cards = await prisma.card.findMany({
+    where: { setId, id: { not: cardId }, front: { activeImageId: { not: null } } },
+    orderBy: { orderIndex: "asc" },
+    include: { front: { select: { activeImageId: true } }, location: { select: { name: true } } },
+  });
+  return cards.map((c) => ({
+    id: c.id,
+    imageId: c.front.activeImageId!,
+    label: c.location
+      ? `${c.location.name} ${c.positionLabel ?? ""} — ${c.name}`.replace("  ", " ")
+      : c.isItem
+        ? `Item ${c.number ?? "?"} — ${c.name}`
+        : c.name,
+  }));
+}
+
 export default async function CardPage({
   params,
 }: {
@@ -27,6 +45,10 @@ export default async function CardPage({
   const { widthMm, heightMm } = sizeForSet(set);
   // Effective back: explicit per-card back, else the set's default shared back
   const back = card.back ?? set.sharedBacks.find((b) => b.id === set.defaultBackId) ?? null;
+
+  // Item fronts can be generated against another card's art (same flow as
+  // "match back side"), so an item's look can follow the card it belongs to.
+  const referenceCards = card.isItem ? await siblingFronts(setId, cardId) : [];
 
   return (
     <main className="mx-auto w-full max-w-6xl space-y-6 p-8">
@@ -53,6 +75,7 @@ export default async function CardPage({
         front={card.front}
         back={back}
         sharedBacks={set.sharedBacks}
+        referenceCards={referenceCards}
         widthMm={widthMm}
         heightMm={heightMm}
       />

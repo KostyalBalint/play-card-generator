@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { updateCardMeta } from "@/actions/cards";
 import { createCustomBack, duplicateAsCustomBack, switchCardBack } from "@/actions/backs";
-import { FaceForm } from "./FaceForm";
+import { FaceForm, type ReferenceCard } from "./FaceForm";
 import { ChatPanel } from "./ChatPanel";
 import type { Card, CardSet, FaceDraft, FaceWithImages } from "@/lib/types";
 import { draftFromFace } from "@/lib/types";
@@ -19,6 +19,7 @@ export function CardEditor({
   front,
   back,
   sharedBacks,
+  referenceCards = [],
   widthMm,
   heightMm,
 }: {
@@ -28,6 +29,8 @@ export function CardEditor({
   /** The face actually used as back: custom, shared, or set default (null = none anywhere) */
   back: FaceWithImages | null;
   sharedBacks: FaceWithImages[];
+  /** Other cards in the set whose front art can seed this front's generation. */
+  referenceCards?: ReferenceCard[];
   widthMm: number;
   heightMm: number;
 }) {
@@ -110,6 +113,7 @@ export function CardEditor({
               draft={frontDraft}
               onDraftChange={setFrontDraft}
               backReferenceImageId={back?.activeImageId ?? null}
+              referenceCards={referenceCards}
             />
           ) : card.mapId ? (
             // All of a map's cards share the map's one back face — editing it here

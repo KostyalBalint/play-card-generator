@@ -13,6 +13,9 @@ const inputCls =
   "w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900";
 const labelCls = "block text-xs font-medium text-zinc-500 dark:text-zinc-400";
 
+/** A card whose front art can seed another face's generation. */
+export type ReferenceCard = { id: string; label: string; imageId: string };
+
 export function FaceForm({
   face,
   widthMm,
@@ -24,6 +27,7 @@ export function FaceForm({
   defaultReferenceImageId = null,
   defaultAlterPrompt = "",
   backReferenceImageId = null,
+  referenceCards = [],
   overlay = null,
   saveLabel = "Save",
 }: {
@@ -39,6 +43,8 @@ export function FaceForm({
   defaultAlterPrompt?: string;
   /** Card's back active image — enables "match back side" on a front face's main Generate. */
   backReferenceImageId?: string | null;
+  /** Other cards whose front art can be used as a reference — same flow as "match back side". */
+  referenceCards?: ReferenceCard[];
   /** Rendered (not baked) label + caption drawn over the preview — see lib/overlay. */
   overlay?: FaceOverlay | null;
   /** Label for the plain (no-regen) save button. */
@@ -50,6 +56,7 @@ export function FaceForm({
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [alterPrompt, setAlterPrompt] = useState(defaultAlterPrompt);
   const [matchBack, setMatchBack] = useState(false);
+  const [refCardId, setRefCardId] = useState("");
   const draft = controlledDraft ?? internalDraft;
   const setDraft = onDraftChange ?? setInternalDraft;
 
@@ -88,7 +95,12 @@ export function FaceForm({
     });
   }
 
-  async function generate(opts?: { referenceImageId?: string; useFacePrompt?: boolean; alterText?: boolean }) {
+  async function generate(opts?: {
+    referenceImageId?: string;
+    useFacePrompt?: boolean;
+    alterText?: boolean;
+    referenceKind?: "back" | "card";
+  }) {
     setGenError(null);
     setGenerating(true);
     try {
@@ -103,7 +115,7 @@ export function FaceForm({
                 opts?.alterText
                   ? { referenceImageId, alterText: true }
                   : opts?.useFacePrompt
-                    ? { referenceImageId, useFacePrompt: true }
+                    ? { referenceImageId, useFacePrompt: true, referenceKind: opts.referenceKind ?? "back" }
                     : { referenceImageId, alterPrompt },
               ),
             }
@@ -122,6 +134,15 @@ export function FaceForm({
   const refImageId = face.activeImageId ?? defaultReferenceImageId;
 
   const doneImages = face.images.filter((img) => img.status === "DONE");
+
+  // Reference for the main Generate: a picked card's front wins over the card's
+  // own back — both take the same "own prompt + reference image" path.
+  const refCard = referenceCards.find((c) => c.id === refCardId) ?? null;
+  const genRef = refCard
+    ? { referenceImageId: refCard.imageId, useFacePrompt: true, referenceKind: "card" as const }
+    : matchBack && backReferenceImageId
+      ? { referenceImageId: backReferenceImageId, useFacePrompt: true, referenceKind: "back" as const }
+      : undefined;
 
   return (
     <div className="grid grid-cols-1 gap-6 md:grid-cols-[240px_1fr]">
@@ -248,6 +269,34 @@ export function FaceForm({
                 Match back side — use the card&apos;s back image as a visual reference (same character/scene/style)
               </label>
             )}
+            {referenceCards.length > 0 && (
+              <div className="flex items-center gap-2">
+                <label className="flex-1 text-xs text-zinc-600 dark:text-zinc-300">
+                  Reference card — generate from this face&apos;s prompt with another card&apos;s art as a
+                  visual reference (style, palette, world)
+                  <select
+                    className={`${inputCls} mt-1`}
+                    value={refCardId}
+                    onChange={(e) => setRefCardId(e.target.value)}
+                  >
+                    <option value="">No reference card</option>
+                    {referenceCards.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {refCard && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={`/api/images/${refCard.imageId}`}
+                    alt={refCard.label}
+                    className="h-16 w-12 shrink-0 self-end rounded border border-zinc-300 object-cover dark:border-zinc-700"
+                  />
+                )}
+              </div>
+            )}
             <div className="flex gap-2">
               <button
                 onClick={save}
@@ -258,25 +307,15 @@ export function FaceForm({
                 {saveLabel}
               </button>
               <button
-                onClick={() =>
-                  generate(
-                    matchBack && backReferenceImageId
-                      ? { referenceImageId: backReferenceImageId, useFacePrompt: true }
-                      : undefined,
-                  )
-                }
+                onClick={() => generate(genRef)}
                 disabled={generating || !draft.imagePrompt.trim()}
                 className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
               >
                 {generating
                   ? "Generating…"
-                  : matchBack && backReferenceImageId
-                    ? face.activeImageId
-                      ? "Regenerate from back"
-                      : "Generate from back"
-                    : face.activeImageId
-                      ? "Regenerate image"
-                      : "Generate image"}
+                  : `${face.activeImageId ? "Regenerate" : "Generate"} ${
+                      refCard ? "from card" : genRef ? "from back" : "image"
+                    }`}
               </button>
               {face.activeImageId && (
                 <button

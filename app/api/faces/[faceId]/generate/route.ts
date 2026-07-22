@@ -3,7 +3,13 @@ import { toFile } from "openai";
 import sharp from "sharp";
 import { prisma } from "@/lib/prisma";
 import { openai, IMAGE_MODEL } from "@/lib/openai";
-import { buildEditPrompt, buildImagePrompt, buildPromptWithReference, buildTextAlterPrompt } from "@/lib/prompts";
+import {
+  buildEditPrompt,
+  buildImagePrompt,
+  buildPromptWithReference,
+  buildTextAlterPrompt,
+  type ReferenceKind,
+} from "@/lib/prompts";
 import { readStorageFile, writeStorageFile } from "@/lib/storage";
 import { sizeForSet } from "@/lib/sizes";
 import { MAP_COLS, MAP_ROWS, masterTileMm } from "@/lib/maps";
@@ -59,7 +65,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ fac
 
   // Optional body: { referenceImageId, alterPrompt } switches to image-edit mode.
   // The plain-generate client sends no body at all — req.json() would throw.
-  let body: { referenceImageId?: string; alterPrompt?: string; useFacePrompt?: boolean; alterText?: boolean } = {};
+  let body: {
+    referenceImageId?: string;
+    alterPrompt?: string;
+    useFacePrompt?: boolean;
+    alterText?: boolean;
+    /** With useFacePrompt: whether the reference is this card's back or another card's front. */
+    referenceKind?: ReferenceKind;
+  } = {};
   try {
     body = await req.json();
   } catch {
@@ -109,7 +122,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ fac
     ? body.alterText
       ? buildTextAlterPrompt(face, set)
       : body.useFacePrompt
-        ? buildPromptWithReference(face, set, cardNumber)
+        ? buildPromptWithReference(
+            face,
+            set,
+            cardNumber,
+            body.referenceKind === "card" ? "card" : "back",
+          )
         : buildEditPrompt(body.alterPrompt!, set)
     : buildImagePrompt(
         face,

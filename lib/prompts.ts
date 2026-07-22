@@ -115,20 +115,30 @@ function round1(n: number) {
   return Math.round(n * 10) / 10;
 }
 
+/** Where a face-prompt reference image came from — the wording differs. */
+export type ReferenceKind = "back" | "card";
+
 /**
  * Front face generated using its own full prompt, but with a reference image
- * (typically the card's back) supplied so the art stays visually consistent.
+ * supplied so the art stays visually consistent: either the card's own back
+ * (same card, other side) or another card's front (same world, other subject).
  */
 export function buildPromptWithReference(
   face: Pick<CardFace, "textLayout" | "title" | "bodyText" | "imagePrompt">,
   set: Pick<CardSet, "stylePrompt" | "widthMm" | "heightMm">,
   cardNumber?: number | null,
+  kind: ReferenceKind = "back",
 ) {
   return [
     buildImagePrompt(face, set, cardNumber),
-    "A reference image is provided. Match its art style, colour palette, character design and setting, " +
-      "and depict the same character(s) and place — this is a different side/scene of the same card, " +
-      "following the description above. Do not copy the reference's text or layout.",
+    kind === "card"
+      ? "A reference image is provided: the art of another card from the same deck. Match its art style, " +
+        "colour palette, lighting and world — and keep any character, object or place it shares with the " +
+        "description above looking like the same one. Depict the subject described above, not the " +
+        "reference's subject, and do not copy its text or layout."
+      : "A reference image is provided. Match its art style, colour palette, character design and setting, " +
+        "and depict the same character(s) and place — this is a different side/scene of the same card, " +
+        "following the description above. Do not copy the reference's text or layout.",
   ].join("\n\n");
 }
 
