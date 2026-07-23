@@ -4,9 +4,9 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { updateCardMeta } from "@/actions/cards";
 import { createCustomBack, duplicateAsCustomBack, switchCardBack } from "@/actions/backs";
-import { FaceForm, type ReferenceCard } from "./FaceForm";
+import { FaceForm } from "./FaceForm";
 import { ChatPanel } from "./ChatPanel";
-import type { Card, CardSet, FaceDraft, FaceWithImages } from "@/lib/types";
+import type { Card, CardSet, FaceDraft, FaceWithImages, ReferenceCard } from "@/lib/types";
 import { draftFromFace } from "@/lib/types";
 import type { CardSuggestion } from "@/lib/chat";
 
@@ -20,7 +20,6 @@ export function CardEditor({
   back,
   sharedBacks,
   referenceCards = [],
-  allowReferenceUpload = false,
   widthMm,
   heightMm,
 }: {
@@ -30,10 +29,8 @@ export function CardEditor({
   /** The face actually used as back: custom, shared, or set default (null = none anywhere) */
   back: FaceWithImages | null;
   sharedBacks: FaceWithImages[];
-  /** Other cards in the set whose front art can seed this front's generation. */
+  /** Other cards' front art + uploaded pictures that can seed this front's generation. */
   referenceCards?: ReferenceCard[];
-  /** Show the "upload a reference picture" control on the front face. */
-  allowReferenceUpload?: boolean;
   widthMm: number;
   heightMm: number;
 }) {
@@ -117,7 +114,7 @@ export function CardEditor({
               onDraftChange={setFrontDraft}
               backReferenceImageId={back?.activeImageId ?? null}
               referenceCards={referenceCards}
-              uploadSetId={allowReferenceUpload ? set.id : null}
+              uploadSetId={set.id}
             />
           ) : card.mapId ? (
             // All of a map's cards share the map's one back face — editing it here

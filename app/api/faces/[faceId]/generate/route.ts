@@ -136,20 +136,27 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ fac
     reference = { sourceImageId: refImage.id, png: await readStorageFile(refImage.filePath) };
   }
 
+  // Prompt geometry: always the set's *effective* size (a preset's dimensions,
+  // not the stale widthMm/heightMm columns). A map master describes its own
+  // tiles, which lie on their side when the assembled map is landscape.
+  const promptSet = mapMaster
+    ? { ...set, ...masterTileMm(sizeForSet(set), mapMaster.landscape) }
+    : { ...set, ...sizeForSet(set) };
+  // Faces that are one illustration cut into several cards describe the grid
+  // instead of a single card: a map master (2x2), a panorama (N side-by-side).
+  const tiling = mapMaster
+    ? { cols: MAP_COLS, rows: MAP_ROWS }
+    : panoramaSpan > 1
+      ? { cols: panoramaSpan, rows: 1 }
+      : null;
+
   const resolvedPrompt = reference
     ? body.alterText
-      ? buildTextAlterPrompt(face, set)
+      ? buildTextAlterPrompt(face, promptSet)
       : body.useFacePrompt
-        ? buildPromptWithReference(face, set, cardNumber, referenceKind(body.referenceKind))
-        : buildEditPrompt(body.alterPrompt!, set)
-    : buildImagePrompt(
-        face,
-        // A map master describes its own tiles, which lie on their side when the
-        // assembled map is landscape.
-        mapMaster ? { ...set, ...masterTileMm(sizeForSet(set), mapMaster.landscape) } : set,
-        cardNumber,
-        mapMaster ? { cols: MAP_COLS, rows: MAP_ROWS } : null,
-      );
+        ? buildPromptWithReference(face, promptSet, cardNumber, referenceKind(body.referenceKind), tiling)
+        : buildEditPrompt(body.alterPrompt!, promptSet)
+    : buildImagePrompt(face, promptSet, cardNumber, tiling);
 
   const record = await prisma.generatedImage.create({
     data: { faceId, status: "PENDING", resolvedPrompt, sourceImageId: reference?.sourceImageId ?? null },

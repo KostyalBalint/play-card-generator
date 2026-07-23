@@ -17,7 +17,7 @@ import { FaceForm } from "./FaceForm";
 import { OverlayStyleEditor } from "./OverlayStyleEditor";
 import { CardFacePreview } from "./CardFacePreview";
 import { CardFaceModal } from "./CardFaceModal";
-import type { Card, CardSet, FaceWithImages, Location } from "@/lib/types";
+import type { Card, CardSet, FaceWithImages, Location, ReferenceCard } from "@/lib/types";
 
 const inputCls =
   "rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900";
@@ -42,12 +42,15 @@ export function LocationEditor({
   set,
   sharedBacks,
   location,
+  references = [],
   widthMm,
   heightMm,
 }: {
   set: CardSet;
   sharedBacks: FaceWithImages[];
   location: FullLocation;
+  /** Card art + uploaded pictures that can seed the panorama / a card front. */
+  references?: ReferenceCard[];
   widthMm: number;
   heightMm: number;
 }) {
@@ -107,6 +110,8 @@ export function LocationEditor({
                 face={location.panorama}
                 widthMm={Math.max(1, members.length) * widthMm}
                 heightMm={heightMm}
+                referenceCards={references}
+                uploadSetId={set.id}
               />
               <div className="space-y-2 border-t border-zinc-200 pt-4 dark:border-zinc-800">
                 <div>
@@ -194,6 +199,7 @@ export function LocationEditor({
           set={set}
           card={openCard}
           sharedBacks={sharedBacks}
+          references={references}
           locationName={location.name}
           widthMm={widthMm}
           heightMm={heightMm}

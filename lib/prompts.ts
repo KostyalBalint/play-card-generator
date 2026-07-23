@@ -129,9 +129,11 @@ export function buildPromptWithReference(
   set: Pick<CardSet, "stylePrompt" | "widthMm" | "heightMm">,
   cardNumber?: number | null,
   kind: ReferenceKind = "back",
+  /** Set when the face spans a grid of cards (panorama, map master) — see buildImagePrompt. */
+  tiling?: Tiling | null,
 ) {
   return [
-    buildImagePrompt(face, set, cardNumber),
+    buildImagePrompt(face, set, cardNumber, tiling),
     kind === "upload"
       ? "A reference image is provided: a picture supplied by the user of the subject to depict. Use it for " +
         "the subject's shape, colours, markings and distinguishing details, but redraw it in the deck's art " +

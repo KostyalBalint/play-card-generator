@@ -3,43 +3,11 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { sizeForSet } from "@/lib/sizes";
 import { resolveBackFaceId } from "@/lib/faces";
+import { setReferences } from "@/lib/references";
 import { deleteCard } from "@/actions/cards";
 import { CardEditor } from "@/components/CardEditor";
 
 export const dynamic = "force-dynamic";
-
-/** Every other card in the set that has a generated front, labelled for a picker. */
-async function siblingFronts(setId: string, cardId: string) {
-  const cards = await prisma.card.findMany({
-    where: { setId, id: { not: cardId }, front: { activeImageId: { not: null } } },
-    orderBy: { orderIndex: "asc" },
-    include: { front: { select: { activeImageId: true } }, location: { select: { name: true } } },
-  });
-  return cards.map((c) => ({
-    id: c.id,
-    imageId: c.front.activeImageId!,
-    label: c.location
-      ? `${c.location.name} ${c.positionLabel ?? ""} — ${c.name}`.replace("  ", " ")
-      : c.isItem
-        ? `Item ${c.number ?? "?"} — ${c.name}`
-        : c.name,
-  }));
-}
-
-/** Pictures uploaded to the set, offered in the same picker as sibling card art. */
-async function uploadedReferences(setId: string) {
-  const uploads = await prisma.referenceImage.findMany({
-    where: { setId, filePath: { not: "" } },
-    orderBy: { createdAt: "desc" },
-    select: { id: true, name: true },
-  });
-  return uploads.map((u) => ({
-    id: `upload:${u.id}`,
-    imageId: u.id,
-    label: u.name,
-    kind: "upload" as const,
-  }));
-}
 
 export default async function CardPage({
   params,
@@ -63,12 +31,10 @@ export default async function CardPage({
   const backFaceId = resolveBackFaceId(card, set);
   const back = card.back ?? set.sharedBacks.find((b) => b.id === backFaceId) ?? null;
 
-  // Item fronts can be generated against another card's art (same flow as
-  // "match back side") or an uploaded picture of the item itself, so an item's
-  // look can follow the card it belongs to — or a real object.
-  const referenceCards = card.isItem
-    ? [...(await uploadedReferences(setId)), ...(await siblingFronts(setId, cardId))]
-    : [];
+  // Any front can be generated against another card's art (same flow as "match
+  // back side") or an uploaded picture, so a card's look can follow the deck —
+  // or a real object.
+  const referenceCards = (await setReferences(setId)).filter((r) => r.id !== cardId);
 
   return (
     <main className="mx-auto w-full max-w-6xl space-y-6 p-8">
@@ -96,7 +62,6 @@ export default async function CardPage({
         back={back}
         sharedBacks={set.sharedBacks}
         referenceCards={referenceCards}
-        allowReferenceUpload={card.isItem}
         widthMm={widthMm}
         heightMm={heightMm}
       />

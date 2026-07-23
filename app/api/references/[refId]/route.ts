@@ -15,8 +15,4 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ ref
   });
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ refId: string }> }) {
-  const { refId } = await params;
-  await prisma.referenceImage.delete({ where: { id: refId } });
-  return NextResponse.json({ ok: true });
-}
+// Deleting lives in actions/references.deleteReference — it removes the PNG too.

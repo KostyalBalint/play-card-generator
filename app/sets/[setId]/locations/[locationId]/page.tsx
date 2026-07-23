@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { sizeForSet } from "@/lib/sizes";
+import { setReferences } from "@/lib/references";
 import { LocationEditor } from "@/components/LocationEditor";
 
 export const dynamic = "force-dynamic";
@@ -28,6 +29,9 @@ export default async function LocationPage({
   if (!location || location.setId !== setId) notFound();
 
   const { widthMm, heightMm } = sizeForSet(location.set);
+  // Card art + uploaded pictures usable as a visual reference for the panorama
+  // and for the members' fronts (each card drops itself — see LocationEditor).
+  const references = await setReferences(setId);
 
   return (
     <main className="mx-auto w-full max-w-5xl space-y-6 p-8">
@@ -41,6 +45,7 @@ export default async function LocationPage({
         set={location.set}
         sharedBacks={location.set.sharedBacks}
         location={location}
+        references={references}
         widthMm={widthMm}
         heightMm={heightMm}
       />

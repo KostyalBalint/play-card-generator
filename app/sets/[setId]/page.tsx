@@ -9,6 +9,7 @@ import { BackDesignManager } from "@/components/BackDesignManager";
 import { LocationManager } from "@/components/LocationManager";
 import { MapManager } from "@/components/MapManager";
 import { ItemManager } from "@/components/ItemManager";
+import { ReferenceManager } from "@/components/ReferenceManager";
 import { CardFacePreview } from "@/components/CardFacePreview";
 import { ExportPdfButton } from "@/components/ExportPdfButton";
 
@@ -23,6 +24,7 @@ export default async function SetPage({ params }: { params: Promise<{ setId: str
       sharedBacks: { include: { images: { orderBy: { createdAt: "desc" } } } },
       locations: { orderBy: { orderIndex: "asc" }, include: { _count: { select: { cards: true } } } },
       maps: { orderBy: { orderIndex: "asc" }, include: { _count: { select: { cards: true } } } },
+      referenceImages: { orderBy: { createdAt: "desc" } },
     },
   });
   if (!set) notFound();
@@ -138,6 +140,16 @@ export default async function SetPage({ params }: { params: Promise<{ setId: str
           explicit back. Individual cards can customize a copy in their editor.
         </p>
         <BackDesignManager set={set} sharedBacks={set.sharedBacks} widthMm={widthMm} heightMm={heightMm} />
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="font-semibold">Reference images</h2>
+        <p className="text-xs text-zinc-400">
+          Pictures uploaded to this set, never printed on a card. Pick one on any card front or on a
+          location panorama to generate that face&apos;s own prompt with the picture as a visual
+          reference — the same asset can be reused as often as you like.
+        </p>
+        <ReferenceManager setId={set.id} references={set.referenceImages} />
       </section>
 
       <section className="space-y-3 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">

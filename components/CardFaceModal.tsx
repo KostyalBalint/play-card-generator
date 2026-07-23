@@ -11,7 +11,7 @@ import {
 import { createCustomBack, duplicateAsCustomBack, switchCardBack } from "@/actions/backs";
 import { overlayFor } from "@/lib/overlay";
 import { FaceForm } from "./FaceForm";
-import type { Card, CardSet, FaceWithImages } from "@/lib/types";
+import type { Card, CardSet, FaceWithImages, ReferenceCard } from "@/lib/types";
 
 const inputCls =
   "rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900";
@@ -22,6 +22,7 @@ export function CardFaceModal({
   set,
   card,
   sharedBacks,
+  references = [],
   locationName,
   widthMm,
   heightMm,
@@ -31,6 +32,8 @@ export function CardFaceModal({
   card: CardWithFaces;
   /** The set's pack-level shared backs, selectable as a non-panorama card's back. */
   sharedBacks: FaceWithImages[];
+  /** Card art + uploaded pictures that can seed this front's generation. */
+  references?: ReferenceCard[];
   /** Default caption for the card's back overlay. */
   locationName: string;
   widthMm: number;
@@ -289,6 +292,8 @@ export function CardFaceModal({
               widthMm={widthMm}
               heightMm={heightMm}
               backReferenceImageId={effectiveBack?.activeImageId ?? null}
+              referenceCards={references.filter((r) => r.id !== card.id)}
+              uploadSetId={set.id}
               saveLabel="Save text & prompt"
             />
           ) : card.inPanorama ? (

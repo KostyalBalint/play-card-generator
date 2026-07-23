@@ -7,23 +7,13 @@ import { CardFacePreview } from "./CardFacePreview";
 import { ImageLightbox } from "./ImageLightbox";
 import type { FaceOverlay } from "@/lib/overlay";
 import { parseOverlayStyle } from "@/lib/overlaystyle";
-import type { FaceDraft, FaceWithImages } from "@/lib/types";
+import type { FaceDraft, FaceWithImages, ReferenceCard } from "@/lib/types";
 import { draftFromFace } from "@/lib/types";
+import { uploadReferenceImage } from "@/lib/uploads";
 
 const inputCls =
   "w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900";
 const labelCls = "block text-xs font-medium text-zinc-500 dark:text-zinc-400";
-
-/**
- * Art that can seed another face's generation: another card's front, or a
- * picture the user uploaded to the set (kind "upload", imageId = ReferenceImage id).
- */
-export type ReferenceCard = {
-  id: string;
-  label: string;
-  imageId: string;
-  kind?: "card" | "upload";
-};
 
 /** Where a reference thumbnail is served from — uploads live outside GeneratedImage. */
 function refSrc(ref: ReferenceCard) {
@@ -164,11 +154,7 @@ export function FaceForm({
     setGenError(null);
     setUploading(true);
     try {
-      const fd = new FormData();
-      fd.append("file", file);
-      const res = await fetch(`/api/sets/${uploadSetId}/references`, { method: "POST", body: fd });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Upload failed");
+      const data = await uploadReferenceImage(uploadSetId, file);
       const ref: ReferenceCard = {
         id: `upload:${data.id}`,
         label: data.name,

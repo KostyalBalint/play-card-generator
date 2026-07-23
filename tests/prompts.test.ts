@@ -38,3 +38,20 @@ test("upload reference redraws the user's picture in the deck style", () => {
 test("kind defaults to back so existing calls are unchanged", () => {
   assert.equal(buildPromptWithReference(FACE, SET, null), buildPromptWithReference(FACE, SET, null, "back"));
 });
+
+test("a spanning face (panorama) describes the N x 1 grid, not a single card", () => {
+  const p = buildPromptWithReference(FACE, SET, null, "card", { cols: 3, rows: 1 });
+  assert.match(p, /printed across 3 physical cards/);
+  assert.match(p, /3x1 grid, 210 x 105 mm in total/);
+  assert.match(p, /2 vertical seams/);
+  assert.doesNotMatch(p, /full-bleed face of a physical playing card/);
+  // Still its own prompt + style + the reference wording.
+  assert.match(p, /rusted oil lantern/);
+  assert.match(p, /another card from the same deck/);
+});
+
+test("no tiling keeps the single-card paragraph", () => {
+  const p = buildPromptWithReference(FACE, SET, null, "card");
+  assert.match(p, /full-bleed face of a physical playing card/);
+  assert.doesNotMatch(p, /printed across/);
+});
