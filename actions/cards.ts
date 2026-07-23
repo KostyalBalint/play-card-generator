@@ -71,6 +71,30 @@ export async function updateCardMeta(cardId: string, formData: FormData) {
   revalidatePath(`/sets/${card.setId}`);
 }
 
+/** Toggle the card-driven back overlay (label + caption) for a generic card. */
+export async function setCardBackOverlay(cardId: string, value: boolean) {
+  const card = await prisma.card.update({
+    where: { id: cardId },
+    data: { labelOverlay: value },
+  });
+  revalidatePath(`/sets/${card.setId}/cards/${cardId}`);
+  revalidatePath(`/sets/${card.setId}`);
+}
+
+/** Fill the two back-overlay template fields (big label + small caption) for a generic card. */
+export async function updateCardOverlayText(cardId: string, formData: FormData) {
+  const text = (key: string) => {
+    const raw = formData.get(key);
+    return raw === null ? undefined : String(raw).trim() || null;
+  };
+  const card = await prisma.card.update({
+    where: { id: cardId },
+    data: { backText: text("backText"), overlayCaption: text("overlayCaption") },
+  });
+  revalidatePath(`/sets/${card.setId}/cards/${cardId}`);
+  revalidatePath(`/sets/${card.setId}`);
+}
+
 export async function updateFace(faceId: string, input: z.input<typeof faceUpdateSchema>) {
   const data = faceUpdateSchema.parse(input);
   await prisma.cardFace.update({

@@ -2,8 +2,9 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { updateCardMeta } from "@/actions/cards";
+import { updateCardMeta, setCardBackOverlay, updateCardOverlayText } from "@/actions/cards";
 import { createCustomBack, duplicateAsCustomBack, switchCardBack } from "@/actions/backs";
+import { overlayFor } from "@/lib/overlay";
 import { FaceForm } from "./FaceForm";
 import { ChatPanel } from "./ChatPanel";
 import type { Card, CardSet, FaceDraft, FaceWithImages, ReferenceCard } from "@/lib/types";
@@ -190,12 +191,72 @@ export function CardEditor({
                 </select>
               </div>
 
+              {/* Rendered (not baked) text over the back: a big centred label + a
+                  small caption. Works with any back — including the shared default —
+                  and shows up in the preview and the PDF, no image generation. */}
+              {back && (
+                <div className="space-y-2 rounded-md bg-zinc-50 px-3 py-2 text-sm dark:bg-zinc-900">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={card.labelOverlay}
+                      onChange={(e) =>
+                        startTransition(async () => {
+                          await setCardBackOverlay(card.id, e.target.checked);
+                          router.refresh();
+                        })
+                      }
+                      className="h-4 w-4"
+                    />
+                    <span>
+                      Draw text over the back
+                      <span className="ml-1 text-xs text-zinc-400">
+                        (rendered text, no image generation)
+                      </span>
+                    </span>
+                  </label>
+                  {card.labelOverlay && (
+                    <form
+                      action={(fd) =>
+                        startTransition(async () => {
+                          await updateCardOverlayText(card.id, fd);
+                          router.refresh();
+                        })
+                      }
+                      className="flex flex-wrap items-end gap-2"
+                    >
+                      <label className="text-xs font-medium text-zinc-500">
+                        <span className="block">Label (large, centred)</span>
+                        <input
+                          name="backText"
+                          defaultValue={card.backText ?? ""}
+                          placeholder="e.g. No entry"
+                          className={`${inputCls} mt-1 block w-48`}
+                        />
+                      </label>
+                      <label className="text-xs font-medium text-zinc-500">
+                        <span className="block">Caption (small, bottom)</span>
+                        <input
+                          name="overlayCaption"
+                          defaultValue={card.overlayCaption ?? ""}
+                          className={`${inputCls} mt-1 block w-64`}
+                        />
+                      </label>
+                      <button className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800">
+                        Save text
+                      </button>
+                    </form>
+                  )}
+                </div>
+              )}
+
               {back ? (
                 <FaceForm
                   key={back.id}
                   face={back}
                   widthMm={widthMm}
                   heightMm={heightMm}
+                  overlay={overlayFor(card, back, null)}
                   readOnly={!backIsCustom}
                   readOnlyNote={
                     backIsShared
