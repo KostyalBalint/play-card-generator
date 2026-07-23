@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { sizeForSet } from "@/lib/sizes";
+import { setReferences } from "@/lib/references";
 import { MapEditor } from "@/components/MapEditor";
 
 export const dynamic = "force-dynamic";
@@ -26,6 +27,8 @@ export default async function MapPage({
   if (!map || map.setId !== setId) notFound();
 
   const { widthMm, heightMm } = sizeForSet(map.set);
+  // Card art + uploaded pictures usable as a visual reference for the map image.
+  const references = await setReferences(setId);
 
   return (
     <main className="mx-auto w-full max-w-5xl space-y-6 p-8">
@@ -35,7 +38,7 @@ export default async function MapPage({
         </Link>
         <h1 className="text-2xl font-bold">{map.name}</h1>
       </div>
-      <MapEditor setId={setId} map={map} widthMm={widthMm} heightMm={heightMm} />
+      <MapEditor setId={setId} map={map} references={references} widthMm={widthMm} heightMm={heightMm} />
     </main>
   );
 }

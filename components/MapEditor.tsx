@@ -7,7 +7,7 @@ import { deleteMap, setMapLandscape, splitMap, updateMapMeta } from "@/actions/m
 import { MAP_COLS, MAP_ROWS, MAP_TILES, mapSizeMm } from "@/lib/maps";
 import { FaceForm } from "./FaceForm";
 import { CardFacePreview } from "./CardFacePreview";
-import type { Card, FaceWithImages, Map as MapModel } from "@/lib/types";
+import type { Card, FaceWithImages, Map as MapModel, ReferenceCard } from "@/lib/types";
 
 const inputCls =
   "rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900";
@@ -22,11 +22,14 @@ type FullMap = MapModel & {
 export function MapEditor({
   setId,
   map,
+  references = [],
   widthMm,
   heightMm,
 }: {
   setId: string;
   map: FullMap;
+  /** Card art + uploaded pictures that can seed the map image. */
+  references?: ReferenceCard[];
   widthMm: number;
   heightMm: number;
 }) {
@@ -84,7 +87,13 @@ export function MapEditor({
           {" Regenerate the image after switching orientation — an old master would just get cropped."}
         </p>
         {map.master && (
-          <FaceForm face={map.master} widthMm={masterMm.widthMm} heightMm={masterMm.heightMm} />
+          <FaceForm
+            face={map.master}
+            widthMm={masterMm.widthMm}
+            heightMm={masterMm.heightMm}
+            referenceCards={references}
+            uploadSetId={setId}
+          />
         )}
       </section>
 
