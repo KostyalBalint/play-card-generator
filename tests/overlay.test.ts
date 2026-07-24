@@ -37,6 +37,18 @@ test("card-driven labelOverlay centres the letter and captions with the location
   );
 });
 
+test("caption alone renders — an empty label does not suppress the overlay", () => {
+  assert.deepEqual(overlayFor({ labelOverlay: true, overlayCaption: "Entrance" }, null), {
+    label: null,
+    caption: "Entrance",
+  });
+  assert.deepEqual(overlayFor({ labelOverlay: true, backText: "  " }, null, "Cellar"), {
+    label: null,
+    caption: "Cellar",
+  });
+  assert.equal(overlayFor({ labelOverlay: true }, null), null);
+});
+
 test("map cards get no overlay — they are laid out face-up with identical backs", () => {
   assert.equal(overlayFor({ positionLabel: "A" }, { labelOverlay: false }), null);
 });

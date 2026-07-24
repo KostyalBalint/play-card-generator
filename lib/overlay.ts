@@ -34,10 +34,12 @@ export function overlayFor(
   if (card.isItem) return card.number != null ? { label: String(card.number), caption: null } : null;
   // Same fallback as buildBackText (lib/locations): override, else position label.
   const label = card.backText?.trim() || card.positionLabel || null;
-  if (!label) return null;
   if (card.labelOverlay) {
-    return { label, caption: card.overlayCaption?.trim() || locationName?.trim() || null };
+    // Either half may stand alone — a caption with no label is a valid overlay.
+    const caption = card.overlayCaption?.trim() || locationName?.trim() || null;
+    return label || caption ? { label, caption } : null;
   }
+  if (!label) return null;
   // Panorama slices: the letter is drawn small at the bottom, same plate style as
   // the caption on card A — the artwork spans the cards, so keep the centre clear.
   return backFace?.labelOverlay ? { label: null, caption: label } : null;
