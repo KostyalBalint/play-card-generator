@@ -3,11 +3,20 @@
 import Link from "next/link";
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { deleteMap, setMapLandscape, splitMap, updateMapMeta } from "@/actions/maps";
+import {
+  deleteMap,
+  setMapBack,
+  setMapBackOverlay,
+  setMapLandscape,
+  splitMap,
+  updateMapMeta,
+  updateMapOverlayText,
+} from "@/actions/maps";
 import { MAP_COLS, MAP_ROWS, MAP_TILES, mapSizeMm } from "@/lib/maps";
+import { overlayFor } from "@/lib/overlay";
 import { FaceForm } from "./FaceForm";
 import { CardFacePreview } from "./CardFacePreview";
-import type { Card, FaceWithImages, Map as MapModel, ReferenceCard } from "@/lib/types";
+import type { Card, CardSet, FaceWithImages, Map as MapModel, ReferenceCard } from "@/lib/types";
 
 const inputCls =
   "rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900";
@@ -22,12 +31,17 @@ type FullMap = MapModel & {
 export function MapEditor({
   setId,
   map,
+  set,
+  sharedBacks = [],
   references = [],
   widthMm,
   heightMm,
 }: {
   setId: string;
   map: FullMap;
+  set: CardSet;
+  /** The set's shared back designs — any of them can serve as the map's back. */
+  sharedBacks?: FaceWithImages[];
   /** Card art + uploaded pictures that can seed the map image. */
   references?: ReferenceCard[];
   widthMm: number;
@@ -41,6 +55,24 @@ export function MapEditor({
       await fn();
       router.refresh();
     });
+
+  // All map cards share one back, so the first card speaks for the map. Which
+  // back that is lives on the cards themselves (see actions/maps.setMapBack).
+  const sample = map.cards[0] ?? null;
+  const backFaceId = sample?.backFaceId ?? null;
+  const backChoice =
+    backFaceId === null ? "__default" : backFaceId === map.backId ? "__own" : backFaceId;
+  const back =
+    backChoice === "__own"
+      ? map.back
+      : sharedBacks.find((b) => b.id === (backFaceId ?? set.defaultBackId)) ?? null;
+  const backIsOwn = backChoice === "__own";
+  const backLabelOf = (b: FaceWithImages) => {
+    const base = b.basedOnFaceId ? sharedBacks.find((s) => s.id === b.basedOnFaceId) : null;
+    return b.variantLabel
+      ? `${base?.title ?? b.title ?? "Back"} – ${b.variantLabel}`
+      : b.title ?? b.id.slice(0, 6);
+  };
 
   return (
     <div className="space-y-8">
@@ -155,9 +187,96 @@ export function MapEditor({
       <section className="space-y-3 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
         <h2 className="font-semibold">Shared back</h2>
         <p className="text-xs text-zinc-400">
-          All {MAP_TILES} map cards print with this one back design.
+          All {MAP_TILES} map cards print with this one back design — the map&apos;s own, or one of
+          the set&apos;s shared backs.
         </p>
-        {map.back && <FaceForm face={map.back} widthMm={widthMm} heightMm={heightMm} />}
+
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-xs font-medium text-zinc-500">Back source:</span>
+          <select
+            className={inputCls}
+            value={backChoice}
+            onChange={(e) => run(() => setMapBack(map.id, e.target.value))}
+          >
+            <option value="__own">Map&apos;s own back design</option>
+            <option value="__default">Set default back</option>
+            {sharedBacks.map((b) => (
+              <option key={b.id} value={b.id}>
+                Shared: {backLabelOf(b)}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Rendered (not baked) text over the back, applied to all map cards at
+            once. Works with a shared back — that design stays untouched. */}
+        {sample && back && (
+          <div className="space-y-2 rounded-md bg-zinc-50 px-3 py-2 text-sm dark:bg-zinc-900/60">
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={sample.labelOverlay}
+                onChange={(e) => run(() => setMapBackOverlay(map.id, e.target.checked))}
+                className="h-4 w-4"
+              />
+              <span>
+                Draw text over the back
+                <span className="ml-1 text-xs text-zinc-400">
+                  (rendered text, no image generation)
+                </span>
+              </span>
+            </label>
+            {sample.labelOverlay && (
+              <form
+                action={(fd) => run(() => updateMapOverlayText(map.id, fd))}
+                className="flex flex-wrap items-end gap-2"
+              >
+                <label className="text-xs font-medium text-zinc-500">
+                  <span className="block">Label (large, centred)</span>
+                  <input
+                    name="backText"
+                    defaultValue={sample.backText ?? ""}
+                    placeholder="empty = the card's letter"
+                    className={`${inputCls} mt-1 block w-56`}
+                  />
+                </label>
+                <label className="text-xs font-medium text-zinc-500">
+                  <span className="block">Caption (small, bottom)</span>
+                  <input
+                    name="overlayCaption"
+                    defaultValue={sample.overlayCaption ?? ""}
+                    placeholder="optional"
+                    className={`${inputCls} mt-1 block w-64`}
+                  />
+                </label>
+                <button className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800">
+                  Save text
+                </button>
+              </form>
+            )}
+          </div>
+        )}
+
+        {back ? (
+          <FaceForm
+            key={back.id}
+            face={back}
+            widthMm={widthMm}
+            heightMm={heightMm}
+            overlay={sample ? overlayFor(sample, back, null) : null}
+            readOnly={!backIsOwn}
+            readOnlyNote={
+              backIsOwn
+                ? undefined
+                : "This is a shared back used by other cards. Edit it on the set page, or switch back to the map's own design."
+            }
+          />
+        ) : (
+          <p className="text-sm text-zinc-400">
+            No back design yet — the set has no default back. Pick the map&apos;s own back design, or
+            add a shared back on the set page.
+          </p>
+        )}
       </section>
 
       <button

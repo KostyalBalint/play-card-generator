@@ -18,7 +18,7 @@ export default async function MapPage({
   const map = await prisma.map.findUnique({
     where: { id: mapId },
     include: {
-      set: true,
+      set: { include: { sharedBacks: { include: faceInclude } } },
       master: { include: faceInclude },
       back: { include: faceInclude },
       cards: { orderBy: { orderIndex: "asc" }, include: { front: { include: faceInclude } } },
@@ -39,7 +39,15 @@ export default async function MapPage({
         </Link>
         <h1 className="text-2xl font-bold">{map.name}</h1>
       </div>
-      <MapEditor setId={setId} map={map} references={references} widthMm={widthMm} heightMm={heightMm} />
+      <MapEditor
+        setId={setId}
+        map={map}
+        set={map.set}
+        sharedBacks={map.set.sharedBacks}
+        references={references}
+        widthMm={widthMm}
+        heightMm={heightMm}
+      />
     </main>
   );
 }

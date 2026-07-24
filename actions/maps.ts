@@ -72,6 +72,69 @@ export async function setMapLandscape(mapId: string, value: boolean) {
   revalidatePath(`/sets/${map.setId}/maps/${mapId}`);
 }
 
+/** The map's own back face, recreated if it was cleaned up (backId is SetNull). */
+async function ownBackId(map: { id: string; name: string; backId: string | null }) {
+  if (map.backId) return map.backId;
+  const back = await prisma.cardFace.create({
+    data: { textLayout: "NONE", title: `${map.name} back` },
+  });
+  await prisma.map.update({ where: { id: map.id }, data: { backId: back.id } });
+  return back.id;
+}
+
+/**
+ * Which back the map's cards print: the map's own back design ("__own"), the
+ * set's default back ("__default") or one of the set's shared backs (its face
+ * id). Stored on the cards themselves like every other card's back, so preview
+ * and export need no map-specific rule (see lib/faces.resolveBackFaceId).
+ */
+export async function setMapBack(mapId: string, choice: string) {
+  const map = await prisma.map.findUniqueOrThrow({ where: { id: mapId } });
+  let backFaceId: string | null;
+  if (choice === "__own") backFaceId = await ownBackId(map);
+  else if (choice === "__default") backFaceId = null;
+  else {
+    const face = await prisma.cardFace.findUnique({ where: { id: choice } });
+    if (!face || face.sharedBackSetId !== map.setId) {
+      throw new Error("Back does not belong to this set");
+    }
+    backFaceId = face.id;
+  }
+  await prisma.card.updateMany({ where: { mapId }, data: { backFaceId } });
+  revalidatePath(`/sets/${map.setId}/maps/${mapId}`);
+  revalidatePath(`/sets/${map.setId}`);
+}
+
+/**
+ * Toggle the card-driven back overlay for every map card: text drawn over
+ * whatever back the map uses — including a shared one, which stays untouched
+ * (see lib/overlay).
+ */
+export async function setMapBackOverlay(mapId: string, value: boolean) {
+  const map = await prisma.map.findUniqueOrThrow({ where: { id: mapId } });
+  await prisma.card.updateMany({ where: { mapId }, data: { labelOverlay: value } });
+  revalidatePath(`/sets/${map.setId}/maps/${mapId}`);
+  revalidatePath(`/sets/${map.setId}`);
+}
+
+/**
+ * The two overlay texts, applied to all map cards at once. An empty label falls
+ * back per card to its position letter, so the quadrants stay distinguishable.
+ */
+export async function updateMapOverlayText(mapId: string, formData: FormData) {
+  const map = await prisma.map.findUniqueOrThrow({ where: { id: mapId } });
+  const text = (key: string) => {
+    const raw = formData.get(key);
+    return raw === null ? undefined : String(raw).trim() || null;
+  };
+  await prisma.card.updateMany({
+    where: { mapId },
+    data: { backText: text("backText"), overlayCaption: text("overlayCaption") },
+  });
+  revalidatePath(`/sets/${map.setId}/maps/${mapId}`);
+  revalidatePath(`/sets/${map.setId}`);
+}
+
 export async function deleteMap(mapId: string) {
   const map = await prisma.map.findUniqueOrThrow({
     where: { id: mapId },
