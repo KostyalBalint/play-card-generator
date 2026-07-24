@@ -46,6 +46,16 @@ type FontFiles = {
 };
 
 /**
+ * Vertical metrics of a family, in em. `ascent`/`descent` are the hhea values the
+ * browser uses for half-leading (descent positive here); `capHeight` is measured
+ * from the H glyph's bbox rather than the OS/2 field, which several of these
+ * faces get wrong (Special Elite reports half its real cap height, Gloria's is
+ * inflated by the slant). Regular and bold agree to <0.01em, so one set per family.
+ * Regenerate with fontkit over public/fonts if a font file is ever swapped.
+ */
+export type FontMetrics = { ascent: number; descent: number; capHeight: number };
+
+/**
  * The fonts an overlay can use — all OFL families bundled in public/fonts. The
  * same files back the PDF (embedded via fontkit) and the browser preview
  * (@font-face in app/globals.css), so screen matches print.
@@ -56,62 +66,73 @@ type FontFiles = {
  */
 export const FONT_CATALOG: Record<
   OverlayFont,
-  { label: string; css: string; files: FontFiles }
+  { label: string; css: string; files: FontFiles; metrics: FontMetrics }
 > = {
   sans: {
     label: "Sans (Noto Sans)",
     css: '"Noto Sans", Arial, sans-serif',
     files: { regular: "notosans-400.ttf", bold: "notosans-700.ttf", subset: false },
+    metrics: { ascent: 1.069, descent: 0.293, capHeight: 0.724 },
   },
   serif: {
     label: "Serif (Noto Serif)",
     css: '"Noto Serif", "Times New Roman", serif',
     files: { regular: "notoserif-400.ttf", bold: "notoserif-700.ttf", subset: false },
+    metrics: { ascent: 1.069, descent: 0.293, capHeight: 0.724 },
   },
   mono: {
     label: "Mono (Noto Sans Mono)",
     css: '"Noto Sans Mono", "Courier New", monospace',
     files: { regular: "notomono-400.ttf", bold: "notomono-700.ttf", subset: false },
+    metrics: { ascent: 1.069, descent: 0.293, capHeight: 0.724 },
   },
   cinzel: {
     label: "Cinzel — roman caps",
     css: '"Cinzel", serif',
     files: { regular: "cinzel-400.ttf", bold: "cinzel-700.ttf", subset: false },
+    metrics: { ascent: 0.976, descent: 0.372, capHeight: 0.714 },
   },
   playfair: {
     label: "Playfair — display serif",
     css: '"Playfair Display", serif',
     files: { regular: "playfair-400.ttf", bold: "playfair-700.ttf", subset: false },
+    metrics: { ascent: 1.082, descent: 0.251, capHeight: 0.722 },
   },
   imfell: {
     label: "IM Fell English — old book",
     css: '"IM Fell English", serif',
     files: { regular: "imfell-400.ttf", bold: null, subset: false },
+    metrics: { ascent: 0.905, descent: 0.363, capHeight: 0.682 },
   },
   oswald: {
     label: "Oswald — condensed",
     css: '"Oswald", sans-serif',
     files: { regular: "oswald-400.ttf", bold: "oswald-700.ttf", subset: false },
+    metrics: { ascent: 1.193, descent: 0.289, capHeight: 0.817 },
   },
   bebas: {
     label: "Bebas Neue — poster caps",
     css: '"Bebas Neue", sans-serif',
     files: { regular: "bebas-400.ttf", bold: null, subset: true },
+    metrics: { ascent: 0.9, descent: 0.3, capHeight: 0.71 },
   },
   amatic: {
     label: "Amatic SC — thin caps",
     css: '"Amatic SC", cursive',
     files: { regular: "amatic-400.ttf", bold: "amatic-700.ttf", subset: false },
+    metrics: { ascent: 1.016, descent: 0.245, capHeight: 0.786 },
   },
   specialElite: {
     label: "Special Elite — typewriter",
     css: '"Special Elite", cursive',
     files: { regular: "specialelite-400.ttf", bold: null, subset: false },
+    metrics: { ascent: 0.703, descent: 0.297, capHeight: 0.72 },
   },
   gloria: {
     label: "Gloria Hallelujah — handwritten",
     css: '"Gloria Hallelujah", cursive',
     files: { regular: "gloria-400.ttf", bold: null, subset: false },
+    metrics: { ascent: 1.405, descent: 0.577, capHeight: 0.739 },
   },
 };
 
@@ -280,3 +301,35 @@ export function hexToRgb(hex: string): { r: number; g: number; b: number } {
 export const PLATE_PAD_X_EM = 0.4;
 export const PLATE_PAD_Y_EM = 0.25;
 export const PLATE_RADIUS_EM = 0.3;
+
+/** Height of the text line box inside the plate, in em. */
+export const TEXT_BOX_EM = 1;
+
+/** Total plate height in em: the line box plus PLATE_PAD_Y_EM top and bottom. */
+export const PLATE_H_EM = TEXT_BOX_EM + 2 * PLATE_PAD_Y_EM;
+
+/**
+ * Where the baseline sits below the plate's top edge, in em.
+ *
+ * The anchor centres the *plate*, so the text has to be centred inside it or the
+ * whole overlay reads as shifted. Centring the em box does not do that: the box
+ * reserves descender room that "12" or "A" never fills, and the ascent/descent
+ * split differs wildly per family. So centre the cap band — baseline to cap
+ * height — which is what the eye reads as centred for numbers, letters and
+ * ordinary text alike. Descenders hang into the bottom padding, as intended.
+ */
+export function baselineFromPlateTopEm(font: OverlayFont): number {
+  return PLATE_H_EM / 2 + FONT_CATALOG[font].metrics.capHeight / 2;
+}
+
+/**
+ * Em correction for the CSS preview: the browser puts the baseline wherever
+ * half-leading lands it (line box centred on ascent+descent, hhea metrics for
+ * these TTFs), which is not the cap-centred baseline above. Apply the difference
+ * as a translateY on the text so the preview lands where the PDF draws it.
+ */
+export function previewBaselineShiftEm(font: OverlayFont): number {
+  const { ascent, descent } = FONT_CATALOG[font].metrics;
+  const cssBaseline = PLATE_PAD_Y_EM + (TEXT_BOX_EM - (ascent + descent)) / 2 + ascent;
+  return baselineFromPlateTopEm(font) - cssBaseline;
+}

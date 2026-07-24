@@ -2,11 +2,17 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   DEFAULT_OVERLAY_STYLE,
+  FONT_CATALOG,
   MARGIN_FRAC,
   OVERLAY_FONTS,
+  PLATE_H_EM,
+  PLATE_PAD_Y_EM,
+  TEXT_BOX_EM,
+  baselineFromPlateTopEm,
   parseOverlayStyle,
   placement,
   plateFill,
+  previewBaselineShiftEm,
 } from "../lib/overlaystyle.ts";
 
 test("legacy plate presets map onto the colour + opacity fields", () => {
@@ -61,6 +67,27 @@ test("the default style reproduces the historic centred label + bottom caption",
   assert.equal(cap.yFrac, 1 - MARGIN_FRAC * aspect);
   assert.equal(cap.alignY, "end");
   assert.equal(cap.alignX, "center");
+});
+
+test("every font's cap band is centred in the plate", () => {
+  for (const f of OVERLAY_FONTS) {
+    const { capHeight } = FONT_CATALOG[f].metrics;
+    const baseline = baselineFromPlateTopEm(f);
+    // Distance from the plate's top to the cap top must equal the distance from
+    // the baseline to the plate's bottom.
+    const above = baseline - capHeight;
+    const below = PLATE_H_EM - baseline;
+    assert.ok(Math.abs(above - below) < 1e-9, `${f}: ${above} vs ${below}`);
+  }
+});
+
+test("the preview shift moves the CSS baseline onto the drawn one", () => {
+  for (const f of OVERLAY_FONTS) {
+    const { ascent, descent } = FONT_CATALOG[f].metrics;
+    // Where the browser puts the baseline in a line-height:1 box, plus the shift.
+    const css = PLATE_PAD_Y_EM + (TEXT_BOX_EM - (ascent + descent)) / 2 + ascent;
+    assert.ok(Math.abs(css + previewBaselineShiftEm(f) - baselineFromPlateTopEm(f)) < 1e-9, f);
+  }
 });
 
 test("corner anchors sit inside the margin and nudges shift from there", () => {

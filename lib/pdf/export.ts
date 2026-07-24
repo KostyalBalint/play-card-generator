@@ -12,9 +12,10 @@ import { overlayFor, type FaceOverlay } from "@/lib/overlay";
 import {
   DEFAULT_OVERLAY_STYLE,
   FONT_CATALOG,
+  PLATE_H_EM,
   PLATE_PAD_X_EM,
-  PLATE_PAD_Y_EM,
   PLATE_RADIUS_EM,
+  baselineFromPlateTopEm,
   hexToRgb,
   parseOverlayStyle,
   placement,
@@ -422,7 +423,7 @@ function drawOverlay(
 
 /** Plate height for a given font size — padY is PLATE_PAD_Y_EM top and bottom. */
 function plateHeight(size: number): number {
-  return size * (1 + 2 * PLATE_PAD_Y_EM);
+  return size * PLATE_H_EM;
 }
 
 /** One text plate placed by its style within the card box at (x, y, w, h). */
@@ -441,7 +442,6 @@ function plate(
   if (!text) return;
   const size = h * (style.sizePct / 100);
   const padX = size * PLATE_PAD_X_EM;
-  const padY = size * PLATE_PAD_Y_EM;
   const plateW = font.widthOfTextAtSize(text, size) + 2 * padX;
   const plateH = plateHeight(size);
 
@@ -469,7 +469,10 @@ function plate(
   const t = hexToRgb(style.color);
   page.drawText(text, {
     x: left + padX,
-    y: bottom + padY,
+    // drawText's y is the baseline — cap-band centred in the plate, see
+    // baselineFromPlateTopEm. Not bottom + padY: that hangs the text low by the
+    // unused descender room.
+    y: bottom + plateH - size * baselineFromPlateTopEm(style.font),
     size,
     font,
     color: rgb(t.r, t.g, t.b),

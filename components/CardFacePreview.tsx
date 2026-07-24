@@ -7,6 +7,7 @@ import {
   PLATE_RADIUS_EM,
   placement,
   plateFill,
+  previewBaselineShiftEm,
   type OverlayStyle,
   type OverlayTextStyle,
 } from "@/lib/overlaystyle";
@@ -44,11 +45,14 @@ function OverlaySlot({
         }}
       >
         <span
-          className="whitespace-nowrap leading-none"
+          className="block whitespace-nowrap leading-none"
           style={{
             color: hexWithAlpha(style.color, style.textOpacity / 100),
             fontFamily: FONT_CATALOG[style.font].css,
             fontWeight: style.bold ? 700 : 400,
+            // Nudge the baseline from wherever half-leading put it to the
+            // cap-centred one the PDF draws. Needs `block` to take a transform.
+            transform: `translateY(${previewBaselineShiftEm(style.font)}em)`,
           }}
         >
           {text}
