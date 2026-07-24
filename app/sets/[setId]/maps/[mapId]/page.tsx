@@ -28,7 +28,8 @@ export default async function MapPage({
 
   const { widthMm, heightMm } = sizeForSet(map.set);
   // Card art + uploaded pictures usable as a visual reference for the map image.
-  const references = await setReferences(setId);
+  // This map's own master is dropped: referencing itself is the "alter" flow.
+  const references = (await setReferences(setId)).filter((r) => r.id !== `map:${mapId}`);
 
   return (
     <main className="mx-auto w-full max-w-5xl space-y-6 p-8">

@@ -16,6 +16,25 @@ async function uploadedReferences(setId: string): Promise<ReferenceCard[]> {
   }));
 }
 
+/**
+ * The whole, unsliced map illustrations. Their quadrants also show up as card
+ * fronts (see cardFrontReferences), but those are only a corner of the picture —
+ * referencing the master gives the generator the full scene.
+ */
+async function mapMasterReferences(setId: string): Promise<ReferenceCard[]> {
+  const maps = await prisma.map.findMany({
+    where: { setId, master: { activeImageId: { not: null } } },
+    orderBy: { orderIndex: "asc" },
+    select: { id: true, name: true, master: { select: { activeImageId: true } } },
+  });
+  return maps.map((m) => ({
+    id: `map:${m.id}`,
+    imageId: m.master!.activeImageId!,
+    label: `${m.name} — whole map`,
+    kind: "card" as const,
+  }));
+}
+
 /** Every card in the set that has a generated front, labelled for a picker. */
 async function cardFrontReferences(setId: string): Promise<ReferenceCard[]> {
   const cards = await prisma.card.findMany({
@@ -37,13 +56,15 @@ async function cardFrontReferences(setId: string): Promise<ReferenceCard[]> {
 
 /**
  * Everything in the set that can seed a generation: uploaded pictures first,
- * then card fronts. Callers drop the face they are generating (card fronts keep
- * the card's own id) — the API rejects a reference from another set anyway.
+ * then whole map images, then card fronts. Callers drop the face they are
+ * generating (card fronts keep the card's own id, map masters use "map:<mapId>")
+ * — the API rejects a reference from another set anyway.
  */
 export async function setReferences(setId: string): Promise<ReferenceCard[]> {
-  const [uploads, fronts] = await Promise.all([
+  const [uploads, maps, fronts] = await Promise.all([
     uploadedReferences(setId),
+    mapMasterReferences(setId),
     cardFrontReferences(setId),
   ]);
-  return [...uploads, ...fronts];
+  return [...uploads, ...maps, ...fronts];
 }
